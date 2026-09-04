@@ -248,12 +248,12 @@ class AccessService:
         self._transition(request, AccessRequestStatus.provisioning, actor.id)
         self.db.commit()
 
-        adapter = get_provider_adapter(
-            integration.provider.value,
-            str(tenant_id),
-            dict(integration.credentials_encrypted or {}),
-        )
         try:
+            adapter = get_provider_adapter(
+                integration.provider.value,
+                str(tenant_id),
+                dict(integration.credentials_encrypted or {}),
+            )
             result = await adapter.provision_access(
                 professional.email, request.role_or_scope
             )

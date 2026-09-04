@@ -219,6 +219,33 @@ async def main() -> None:
     assert "internal details" not in exception_result["error"]
     print("[PASS] Unexpected provider exceptions fail safely and do not leak internals")
 
+    factory_failure_request = service.create_request(
+        tenant_id=tenant.id,
+        professional_id=professional.id,
+        integration_id=integration.id,
+        access_type=AccessType.repository,
+        role_or_scope="read",
+        requested_by=member,
+    )
+    service.approve_request(
+        tenant_id=tenant.id,
+        request_id=factory_failure_request.id,
+        approver=admin,
+    )
+    with patch(
+        "app.services.access.get_provider_adapter",
+        side_effect=ValueError("unsupported provider with internal details"),
+    ):
+        factory_failure_request, factory_failure_result = await service.provision_request(
+            tenant_id=tenant.id,
+            request_id=factory_failure_request.id,
+            actor=admin,
+        )
+    assert factory_failure_request.status == AccessRequestStatus.failed
+    assert factory_failure_result["error"] == "Provider provisioning failed."
+    assert "internal details" not in factory_failure_result["error"]
+    print("[PASS] Adapter construction failures become failed without leaking internals")
+
     print("DWOP-010 VERIFICATION PASSED")
 
 
