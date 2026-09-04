@@ -15,6 +15,18 @@ from app.models.talent import (
 )
 from app.models.organization import Department, Team
 from app.models.project import Client, Project, ClientStatus, ProjectStatus
+
+from app.models.access import (
+    Integration,
+    IntegrationProvider,
+    IntegrationAuthType,
+    AccessRequest,
+    AccessRequestStatus,
+    AccessType,
+    ApprovalDecision,
+    ApprovalOutcome,
+    AuditEvent,
+)
 from app.models.onboarding import (
     OnboardingTemplate,
     ChecklistTemplateItem,
@@ -43,4 +55,13 @@ __all__ = [
     "ChecklistTemplateItem",
     "OnboardingRun",
     "OnboardingItem",
+    "Integration",
+    "IntegrationProvider",
+    "IntegrationAuthType",
+    "AccessRequest",
+    "AccessRequestStatus",
+    "AccessType",
+    "ApprovalDecision",
+    "ApprovalOutcome",
+    "AuditEvent",
 ]
