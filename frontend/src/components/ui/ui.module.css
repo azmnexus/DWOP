@@ -1,0 +1,527 @@
+/* ============================================================
+   Shared UI Components — CSS Module
+   Uses design tokens from globals.css exclusively
+   ============================================================ */
+
+/* ---------- Button ---------- */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  font-family: var(--font-family);
+  font-weight: var(--font-weight-semibold);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Sizes */
+.buttonSm {
+  height: 2.25rem;
+  padding: 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-sm);
+}
+
+.buttonMd {
+  height: var(--button-height);
+  padding: 0 var(--spacing-xl);
+  font-size: var(--font-size-base);
+  border-radius: var(--radius-md);
+}
+
+.buttonLg {
+  height: 3.5rem;
+  padding: 0 var(--spacing-2xl);
+  font-size: var(--font-size-lg);
+  border-radius: var(--radius-md);
+}
+
+.buttonFull {
+  width: 100%;
+}
+
+/* Variants */
+.buttonPrimary {
+  background-color: var(--color-brand-dark);
+  color: var(--color-text-on-primary);
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background-color: var(--color-brand-primary);
+}
+
+.buttonPrimary:active:not(:disabled) {
+  background-color: var(--color-brand-dark);
+  transform: scale(0.98);
+}
+
+.buttonSecondary {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.buttonSecondary:hover:not(:disabled) {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border-input);
+}
+
+.buttonGhost {
+  background-color: transparent;
+  color: var(--color-text-secondary);
+}
+
+.buttonGhost:hover:not(:disabled) {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.buttonDanger {
+  background-color: var(--color-error);
+  color: white;
+}
+
+.buttonDanger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.buttonLoading {
+  position: relative;
+  color: transparent;
+}
+
+.buttonSpinner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ---------- Input ---------- */
+.inputWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.inputLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.inputContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputField {
+  width: 100%;
+  height: var(--input-height);
+  padding: 0 var(--spacing-md);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  outline: none;
+}
+
+.inputField::placeholder {
+  color: var(--color-text-muted);
+}
+
+.inputField:hover {
+  border-color: var(--color-text-muted);
+}
+
+.inputField:focus {
+  border-color: var(--color-brand-accent);
+  box-shadow: 0 0 0 3px rgba(46, 196, 182, 0.12);
+}
+
+.inputWithIcon {
+  padding-left: 2.75rem;
+}
+
+.inputIcon {
+  position: absolute;
+  left: var(--spacing-md);
+  color: var(--color-text-muted);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.inputError .inputField {
+  border-color: var(--color-error);
+}
+
+.inputError .inputField:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.inputErrorText {
+  font-size: var(--font-size-xs);
+  color: var(--color-error);
+}
+
+.inputHelper {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Badge ---------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  line-height: 1.6;
+  text-transform: capitalize;
+}
+
+.badgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.badgeIntake { background: var(--color-status-intake-bg); color: var(--color-status-intake); }
+.badgeIntake .badgeDot { background: var(--color-status-intake); }
+
+.badgeOnboarding { background: var(--color-status-onboarding-bg); color: var(--color-status-onboarding); }
+.badgeOnboarding .badgeDot { background: var(--color-status-onboarding); }
+
+.badgeReady { background: var(--color-status-ready-bg); color: var(--color-status-ready); }
+.badgeReady .badgeDot { background: var(--color-status-ready); }
+
+.badgeAssigned { background: var(--color-status-assigned-bg); color: var(--color-status-assigned); }
+.badgeAssigned .badgeDot { background: var(--color-status-assigned); }
+
+.badgeOffboarding { background: var(--color-status-offboarding-bg); color: var(--color-status-offboarding); }
+.badgeOffboarding .badgeDot { background: var(--color-status-offboarding); }
+
+.badgeInactive { background: var(--color-status-inactive-bg); color: var(--color-status-inactive); }
+.badgeInactive .badgeDot { background: var(--color-status-inactive); }
+
+.badgeAdmin { background: #EDE9FE; color: #7C3AED; }
+.badgeManager { background: #DBEAFE; color: #2563EB; }
+.badgeMember { background: var(--color-surface-secondary); color: var(--color-text-secondary); }
+
+/* ---------- Card ---------- */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.cardPadded {
+  padding: var(--spacing-lg);
+}
+
+.cardHover {
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+  cursor: pointer;
+}
+
+.cardHover:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cardTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.cardBody {
+  padding: var(--spacing-lg);
+}
+
+/* ---------- Skeleton ---------- */
+.skeletonLine {
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-secondary) 25%,
+    var(--color-surface-hover) 50%,
+    var(--color-surface-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeletonCircle {
+  border-radius: 50%;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-secondary) 25%,
+    var(--color-surface-hover) 50%,
+    var(--color-surface-secondary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeletonCard {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* ---------- Empty State ---------- */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-3xl) var(--spacing-xl);
+  text-align: center;
+}
+
+.emptyStateIcon {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-lg);
+}
+
+.emptyStateTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.emptyStateDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  max-width: 400px;
+  margin-bottom: var(--spacing-lg);
+}
+
+/* ---------- Error State ---------- */
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-3xl) var(--spacing-xl);
+  text-align: center;
+}
+
+.errorStateIcon {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xl);
+  background: var(--color-error-light);
+  color: var(--color-error);
+  margin-bottom: var(--spacing-lg);
+}
+
+.errorStateTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.errorStateDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  max-width: 400px;
+  margin-bottom: var(--spacing-lg);
+}
+
+/* ---------- Toast ---------- */
+.toastContainer {
+  position: fixed;
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  pointer-events: auto;
+  animation: slideInRight var(--transition-slow) ease-out;
+  max-width: 420px;
+}
+
+.toastSuccess { border-left: 3px solid var(--color-success); }
+.toastError { border-left: 3px solid var(--color-error); }
+.toastWarning { border-left: 3px solid var(--color-warning); }
+.toastInfo { border-left: 3px solid var(--color-info); }
+
+.toastIcon {
+  flex-shrink: 0;
+  display: flex;
+}
+
+.toastMessage {
+  flex: 1;
+}
+
+.toastClose {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  display: flex;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.toastClose:hover {
+  color: var(--color-text-primary);
+}
+
+/* ---------- Select ---------- */
+.selectField {
+  width: 100%;
+  height: var(--input-height);
+  padding: 0 var(--spacing-xl) 0 var(--spacing-md);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238A9E98' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+  outline: none;
+}
+
+.selectField:hover {
+  border-color: var(--color-text-muted);
+}
+
+.selectField:focus {
+  border-color: var(--color-brand-accent);
+  box-shadow: 0 0 0 3px rgba(46, 196, 182, 0.12);
+}
+
+/* ---------- Avatar ---------- */
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--color-brand-primary), var(--color-brand-accent));
+  color: var(--color-text-on-primary);
+}
+
+.avatarSm {
+  width: 32px;
+  height: 32px;
+  font-size: var(--font-size-xs);
+}
+
+.avatarMd {
+  width: 40px;
+  height: 40px;
+  font-size: var(--font-size-sm);
+}
+
+.avatarLg {
+  width: 56px;
+  height: 56px;
+  font-size: var(--font-size-xl);
+}
+
+.avatarXl {
+  width: 80px;
+  height: 80px;
+  font-size: var(--font-size-3xl);
+}
+
+/* ---------- Progress Bar ---------- */
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--color-brand-accent), var(--color-brand-light));
+  transition: width var(--transition-slow);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

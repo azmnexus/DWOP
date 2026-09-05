@@ -1,0 +1,201 @@
+/* ============================================================
+   Login Page — "Refined Glass" per Reference A structure
+   1:1 structural port with AZM Nexus brand colors
+   ============================================================ */
+
+.loginPage {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  background: linear-gradient(
+    135deg,
+    var(--color-bg-gradient-start) 0%,
+    var(--color-bg-gradient-end) 50%,
+    #EDF5F4 100%
+  );
+}
+
+/* Card — Reference A: centered, white, rounded-2xl, soft ambient shadow, generous padding */
+.loginCard {
+  width: 100%;
+  max-width: 420px;
+  background: var(--color-surface);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-lg);
+  padding: var(--spacing-2xl) var(--spacing-2xl) var(--spacing-xl);
+  animation: fadeIn var(--transition-slow) ease-out;
+}
+
+/* Icon Badge — Reference A: small rounded-square badge centered above heading */
+.logoBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.logoBadge img {
+  width: 36px;
+  height: 36px;
+}
+
+/* Heading — Reference A: bold, centered */
+.loginHeading {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  text-align: center;
+  margin-bottom: var(--spacing-xs);
+  line-height: var(--line-height-tight);
+}
+
+/* Subtext — Reference A: muted, centered, smaller */
+.loginSubtext {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+  line-height: var(--line-height-normal);
+}
+
+/* Form */
+.loginForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* Session + Recover Access — side by side */
+.sessionRecoverRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: calc(-1 * var(--spacing-xs));
+}
+
+.recoverLink {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.recoverLink:hover {
+  color: var(--color-brand-accent);
+}
+
+/* Submit button area */
+.submitArea {
+  margin-top: var(--spacing-sm);
+}
+
+/* Session checkbox row */
+.sessionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.sessionCheckbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-brand-accent);
+  cursor: pointer;
+}
+
+.sessionLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Error alert */
+.loginError {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: var(--color-error-light);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+}
+
+/* Divider */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin: var(--spacing-lg) 0;
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.dividerText {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* Footer — Reference A equivalent of bottom section */
+.loginFooter {
+  text-align: center;
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--spacing-lg);
+}
+
+.footerLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: var(--font-weight-medium);
+}
+
+.footerDemo {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-sm);
+}
+
+.footerDemoCredential {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Responsive — mobile */
+@media (max-width: 480px) {
+  .loginPage {
+    padding: var(--spacing-md);
+    justify-content: flex-start;
+    padding-top: 15vh;
+  }
+
+  .loginCard {
+    padding: var(--spacing-xl) var(--spacing-lg) var(--spacing-lg);
+    border-radius: var(--radius-xl);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
