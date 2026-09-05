@@ -61,7 +61,7 @@ pip install -r requirements.txt
 # Copy environment variables
 cp .env.example .env
 
-# Run database seed script (creates tables, tenant, hashed users, departments, projects, professionals)
+# Run database seed script (also creates a default network-free GitHub integration)
 python scripts/seed_org_structure.py
 
 # Run the development server

@@ -1,5 +1,6 @@
 """Seed script for DWOP-003, DWOP-004, DWOP-005 & DWOP-006:
 - Root Tenant: AZM Nexus (with branding jsonb)
+- Default GitHub sandbox integration for access lifecycle demos
 - Admin User: admin@azm-nexus.com (role: ADMIN, password: Admin123!)
 - Standard Member: member@azm-nexus.com (role: MEMBER, password: Member123!)
 - Manager User: atanda.david@azm-nexus.com (role: MANAGER, password: LeadAtanda2026!)
@@ -18,8 +19,8 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from datetime import date, timedelta
+from sqlalchemy.orm import Session
 from app.core.database import engine, SessionLocal, Base
-from app.core.security import get_password_hash
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 from app.models.organization import Department, Team
@@ -38,16 +39,49 @@ from app.models.onboarding import (
     OnboardingRun,
     OnboardingItem,
 )
+from app.models.access import Integration, IntegrationAuthType, IntegrationProvider
+
+
+def seed_default_github_integration(
+    db: Session, tenant: Tenant
+) -> tuple[Integration, bool]:
+    """Ensure the tenant has one network-free GitHub demo integration."""
+    integration = (
+        db.query(Integration)
+        .filter(
+            Integration.tenant_id == tenant.id,
+            Integration.provider == IntegrationProvider.github,
+        )
+        .first()
+    )
+    if integration:
+        return integration, False
+
+    integration = Integration(
+        tenant_id=tenant.id,
+        provider=IntegrationProvider.github,
+        auth_type=IntegrationAuthType.oauth2,
+        connection_status="connected",
+        health_status="healthy",
+        credentials_encrypted={},
+        scopes=["repo"],
+    )
+    db.add(integration)
+    db.commit()
+    db.refresh(integration)
+    return integration, True
 
 
 def seed():
-    print("[1/7] Ensuring database tables are created...")
+    from app.core.security import get_password_hash
+
+    print("[1/8] Ensuring database tables are created...")
     Base.metadata.create_all(bind=engine)
     print("      Tables verified successfully.")
 
     db = SessionLocal()
     try:
-        print("[2/7] Seeding Root Tenant: AZM Nexus...")
+        print("[2/8] Seeding Root Tenant: AZM Nexus...")
         tenant = db.query(Tenant).filter(Tenant.slug == "azm-nexus").first()
         if not tenant:
             tenant = Tenant(
@@ -69,7 +103,15 @@ def seed():
         else:
             print(f"      Tenant already exists: {tenant.name} (ID: {tenant.id})")
 
-        print("[3/7] Seeding Users with HASHED Passwords (Admin, Member, Manager)...")
+        print("[3/8] Seeding Default GitHub Sandbox Integration...")
+        github_integration, created = seed_default_github_integration(db, tenant)
+        action = "Created" if created else "Already exists"
+        print(
+            f"      {action}: GitHub sandbox integration "
+            f"(ID: {github_integration.id})"
+        )
+
+        print("[4/8] Seeding Users with HASHED Passwords (Admin, Member, Manager)...")
         # 1. Admin user
         admin_user = db.query(User).filter(User.email == "admin@azm-nexus.com").first()
         admin_hashed = get_password_hash("Admin123!")
@@ -127,7 +169,7 @@ def seed():
         print(f"      Member:  {member_user.email} (Role: {member_user.role.value})")
         print(f"      Manager: {manager_user.email} (Role: {manager_user.role.value})")
 
-        print("[4/7] Seeding Departments and Teams...")
+        print("[5/8] Seeding Departments and Teams...")
         exec_dept = (
             db.query(Department)
             .filter(Department.tenant_id == tenant.id, Department.name == "Executive Leadership")
@@ -191,7 +233,7 @@ def seed():
         print(f"      Departments: {exec_dept.name}, {eng_dept.name}")
         print("      Teams: Backend & Cloud Architecture, Frontend & Workforce Experience")
 
-        print("[5/7] Seeding Client and Project...")
+        print("[6/8] Seeding Client and Project...")
         client = (
             db.query(Client)
             .filter(Client.tenant_id == tenant.id, Client.name == "Apex Global Banking Group")
@@ -230,7 +272,7 @@ def seed():
         print(f"      Client: {client.name} (ID: {client.id})")
         print(f"      Project: {project.name} [{project.code}] (ID: {project.id})")
 
-        print("[6/7] Seeding Sample Professionals (Intake Status)...")
+        print("[7/8] Seeding Sample Professionals (Intake Status)...")
         sample_professionals = [
             {
                 "first_name": "Jane",
@@ -306,7 +348,7 @@ def seed():
 
         db.commit()
 
-        print("[7/7] Seeding Walid's Mock Onboarding Template & Active Run for Jane Doe...")
+        print("[8/8] Seeding Walid's Mock Onboarding Template & Active Run for Jane Doe...")
         template_title = "Standard Software Engineer Onboarding v2.1"
         template = (
             db.query(OnboardingTemplate)
