@@ -5,6 +5,9 @@ from backend.models.department import Department
 from backend.models.team import Team
 from backend.models.client import Client, ClientStatus
 from backend.models.project import Project, ProjectStatus
+from backend.models.professional import Professional, ProfessionalStatus, AvailabilityStatus
+from backend.models.engagement import Engagement, EngagementType, ContractStatus
+from backend.models.assignment import Assignment, AssignmentStatus
 
 __all__ = [
     "Base",
@@ -17,4 +20,12 @@ __all__ = [
     "ClientStatus",
     "Project",
     "ProjectStatus",
+    "Professional",
+    "ProfessionalStatus",
+    "AvailabilityStatus",
+    "Engagement",
+    "EngagementType",
+    "ContractStatus",
+    "Assignment",
+    "AssignmentStatus",
 ]
