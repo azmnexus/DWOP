@@ -8,6 +8,22 @@ from backend.models.project import Project, ProjectStatus
 from backend.models.professional import Professional, ProfessionalStatus, AvailabilityStatus
 from backend.models.engagement import Engagement, EngagementType, ContractStatus
 from backend.models.assignment import Assignment, AssignmentStatus
+from backend.models.onboarding import (
+    OnboardingTemplate,
+    ChecklistTemplateItem,
+    OnboardingRun,
+    OnboardingItem,
+    OnboardingRunStatus,
+    OnboardingItemStatus,
+)
+from backend.models.access import (
+    Integration,
+    AccessRequest,
+    AccessRequestStatus,
+    ApprovalDecision,
+    ApprovalOutcome,
+    AccessType,
+)
 
 __all__ = [
     "Base",
@@ -28,4 +44,16 @@ __all__ = [
     "ContractStatus",
     "Assignment",
     "AssignmentStatus",
+    "OnboardingTemplate",
+    "ChecklistTemplateItem",
+    "OnboardingRun",
+    "OnboardingItem",
+    "OnboardingRunStatus",
+    "OnboardingItemStatus",
+    "Integration",
+    "AccessRequest",
+    "AccessRequestStatus",
+    "ApprovalDecision",
+    "ApprovalOutcome",
+    "AccessType",
 ]
