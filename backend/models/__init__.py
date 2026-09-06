@@ -24,6 +24,7 @@ from backend.models.access import (
     ApprovalOutcome,
     AccessType,
 )
+from backend.models.audit import AuditEvent
 
 __all__ = [
     "Base",
@@ -56,4 +57,5 @@ __all__ = [
     "ApprovalDecision",
     "ApprovalOutcome",
     "AccessType",
+    "AuditEvent",
 ]
