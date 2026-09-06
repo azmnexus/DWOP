@@ -1,0 +1,48 @@
+import asyncio
+from logging.config import fileConfig
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy import create_engine
+from alembic import context
+
+config = context.config
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Import Base and models for autogenerate
+from backend.core.database import Base
+from backend.models import Tenant, User, Department, Team, Client, Project  # noqa
+
+target_metadata = Base.metadata
+
+def run_migrations_offline() -> None:
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(url=url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"})
+    with context.begin_transaction():
+        context.run_migrations()
+
+def do_run_migrations(connection):
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+async def run_async_migrations():
+    connectable = async_engine_from_config(config.get_section(config.config_ini_section, {}), prefix="sqlalchemy.", poolclass=pool.NullPool)
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+def run_migrations_online() -> None:
+    # Try async first, fallback to sync for psycopg2 url
+    url = config.get_main_option("sqlalchemy.url") or ""
+    if "+asyncpg" in url:
+        asyncio.run(run_async_migrations())
+    else:
+        connectable = create_engine(url, poolclass=pool.NullPool)
+        with connectable.connect() as connection:
+            do_run_migrations(connection)
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
