@@ -15,6 +15,7 @@ class AssignmentStatus(str, enum.Enum):
     planned = "planned"
     active = "active"
     completed = "completed"
+    reassigned = "reassigned"
     cancelled = "cancelled"
 
 

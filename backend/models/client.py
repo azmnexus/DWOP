@@ -15,6 +15,7 @@ class ClientStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     PROSPECT = "PROSPECT"
+    CHURNED = "CHURNED"
     ARCHIVED = "ARCHIVED"
 
 
