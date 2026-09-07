@@ -1,9 +1,9 @@
 # DWOP Platform — Sprint 0 Engineering & Architecture Progress Report
 
-**Document Version**: 1.1 (Sprint 0 / Access Lifecycle & Audit Ledger Milestone)  
+**Document Version**: 1.2 (Sprint 0 / Assignments & Capacity Allocation Engine Milestone)  
 **Organization**: AZM Nexus Limited  
 **System**: Digital Workforce Operations Platform (DWOP)  
-**Status**: Completed through Ticket DWOP-013 (including DWOP-010, DWOP-011, DWOP-012 review & merge)  
+**Status**: Completed through Ticket DWOP-009 (including DWOP-010 through DWOP-013, and DWOP-007/008 frontend)  
 
 
 ---
@@ -90,6 +90,24 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
   - `PATCH /api/v1/onboarding/runs/{run_id}/items/{item_id}`: Allows completing or blocking items with audit justifications.
   - `GET /api/v1/onboarding/runs/{run_id}`: Full run inspection with dynamic completion percentage.
 
+### ✅ DWOP-009: Assignments & Capacity Allocation Engine (Walid)
+- **Model**: Implemented `Assignment` (Table 9 of locked ERD) with foreign keys to `tenants.id`, `professionals.id`, `projects.id`, `teams.id`, role, capacity percentage, dates, and `status` (`active`, `completed`, `reassigned`).
+- **Capacity Threshold Validation**:
+  - Strict 100% hard-stop ceiling: Any allocation or update causing a professional's aggregate active capacity to exceed 100% across concurrent projects fails closed with `HTTP 400 Bad Request`.
+  - Dynamic availability synchronization: Updates `availability_status` on `Professional` (`available` at 0%, `partially_booked` between 1% and 99%, `fully_booked` at 100%).
+  - Lifecycle state synchronization: Automatically advances status from `ready` to `assigned` when allocated, and back to `ready` when capacity drops to 0%.
+- **Atomic In-Transaction Audit Emission**:
+  - `assignment.allocated` emitted upon creation with project, professional, and capacity metadata.
+  - `assignment.updated` emitted upon status transition or capacity adjustment.
+- **Endpoints Implemented in `backend/app/api/assignments.py`**:
+  - `POST /api/v1/assignments/allocate`: Capacity allocation guarded by `require_admin_or_manager`.
+  - `GET /api/v1/assignments/capacity`: Tenant-wide capacity overview (headcount, utilization, active counts).
+  - `GET /api/v1/assignments/capacity/professionals/{id}`: Detailed capacity breakdown per talent profile.
+  - `GET /api/v1/assignments`: Filterable list (`project_id`, `professional_id`, `status`).
+  - `GET /api/v1/assignments/my-allocations`: Self-service allocations for authenticated professional.
+  - `GET /api/v1/assignments/{id}`: Single assignment details.
+  - `PATCH /api/v1/assignments/{id}`: Capacity adjustment and status lifecycle transitions.
+
 ### ✅ DWOP-010: Access Request Lifecycle (Oladotun + Walid Review)
 - Implemented models: `Integration` (Table 14), `AccessRequest` (Table 15), `ApprovalDecision` (Table 16).
 - Endpoints implemented:
@@ -170,6 +188,14 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 | `GET` | `/api/v1/onboarding/runs` | Authenticated | DWOP-006/Alignment | ✅ Ready (wired for `workforce/[id]` runs listing) |
 | `GET` | `/api/v1/onboarding/runs/{run_id}` | Authenticated | DWOP-006 | ⏳ Queued for `/onboarding/[run_id]` UI |
 | `PATCH` | `/api/v1/onboarding/runs/{run_id}/items/{item_id}` | Admin / Manager / Assigned Prof | DWOP-006 | ⏳ Queued for Checklist Interactive Tasks |
+| `GET` | `/api/v1/assignments/projects` | Authenticated | DWOP-003/009 | ⏳ Queued for Project Selector |
+| `POST` | `/api/v1/assignments/projects` | `require_admin` | DWOP-003/009 | ⏳ Queued for Project Creation Modal |
+| `GET` | `/api/v1/assignments/capacity` | Authenticated | DWOP-009 | ⏳ Queued for Capacity Dashboard |
+| `GET` | `/api/v1/assignments/capacity/professionals/{id}` | Authenticated | DWOP-009 | ⏳ Queued for Profile Allocation Breakdown |
+| `POST` | `/api/v1/assignments/allocate` | `require_admin_or_manager` | DWOP-009 | ⏳ Queued for Allocate Talent Modal |
+| `GET` | `/api/v1/assignments` | Authenticated | DWOP-009 | ⏳ Queued for Allocations Grid |
+| `GET` | `/api/v1/assignments/my-allocations` | Authenticated | DWOP-009 | ⏳ Queued for Personal Projects View |
+| `PATCH` | `/api/v1/assignments/{id}` | `require_admin_or_manager` | DWOP-009 | ⏳ Queued for Capacity Modification |
 | `GET` | `/api/v1/access/requests` | Authenticated (Members restricted to own) | DWOP-010 | ⏳ Queued for Access Management UI |
 | `POST` | `/api/v1/access/requests` | Authenticated | DWOP-010 | ⏳ Queued for Request Access Modal |
 | `POST` | `/api/v1/access/requests/{id}/approve` | Admin or Manager (direct report) | DWOP-010 | ⏳ Queued for Manager Approval Portal |
@@ -246,6 +272,7 @@ uvicorn app.main:app --reload --port 8000
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
+python scripts/test_dwop009_assignments_capacity.py
 python scripts/test_dwop010_access_lifecycle.py
 python scripts/test_dwop011_adapters.py
 python scripts/test_dwop012_github_mock_poc.py

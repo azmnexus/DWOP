@@ -86,3 +86,4 @@ class Project(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="projects")
     client = relationship("Client", back_populates="projects")
+    assignments = relationship("Assignment", back_populates="project", cascade="all, delete-orphan")

@@ -26,6 +26,7 @@ from app.models.access import (
     ApprovalDecision,
     ApprovalOutcome,
 )
+from app.models.assignment import Assignment, AssignmentStatus
 from app.models.audit import AuditEvent
 
 from app.models.onboarding import (
@@ -64,5 +65,7 @@ __all__ = [
     "AccessType",
     "ApprovalDecision",
     "ApprovalOutcome",
+    "Assignment",
+    "AssignmentStatus",
     "AuditEvent",
 ]
