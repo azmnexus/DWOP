@@ -166,6 +166,19 @@ def start_onboarding_run(
     return run
 
 
+@router.get("/runs", response_model=List[OnboardingRunRead])
+def list_onboarding_runs(
+    professional_id: Optional[uuid.UUID] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """List onboarding runs scoped to tenant, optionally filtered by professional_id."""
+    query = db.query(OnboardingRun).filter(OnboardingRun.tenant_id == current_user.tenant_id)
+    if professional_id:
+        query = query.filter(OnboardingRun.professional_id == professional_id)
+    return query.all()
+
+
 @router.get("/runs/{run_id}", response_model=OnboardingRunRead)
 def get_onboarding_run(
     run_id: uuid.UUID,
