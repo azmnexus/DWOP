@@ -13,7 +13,7 @@
 | Team Member | Role & Coverage | Scope of Ownership | Authoritative Directory | Primary Tickets |
 |---|---|---|---|---|
 | **Walid** | Acting Project Lead & Core Backend Co-Dev | Project orchestration, architectural compliance, code review, test harness verification, core services | `backend/app/` & repository root | DWOP-001–006, DWOP-009, Review & Integration |
-| **Khalifa (`KHALIFAH334`)** | Technical Supervisor & Core Backend | Core backend architecture oversight (between university exams), audit timeline, database engine | `backend/app/` | Supervisor review, Table 17/18, DWOP-013 architecture |
+| **Khalifa (`KHALIFAH334`)** | Technical Supervisor & Core Backend | Core backend architecture oversight (between university exams), audit timeline, database engine | `backend/app/` | Supervisor review, Entities 17/18, DWOP-013 architecture |
 | **Usman (`UsmanBala-cyber`)** | Frontend Engineering Lead | Next.js 14 App Router, Diamond Glass design system, client-side state, API consumption | `frontend/src/` | DWOP-007, DWOP-008, DWOP-014, DWOP-015 |
 | **Oladotun (`Oladotun1`)** | Integrations & Adapters Lead | Third-party provider adapter framework, access request lifecycle, mock & live connectors | `backend/app/integrations/` & `backend/app/services/access.py` | DWOP-010, DWOP-011, DWOP-012, Slack/Trello adapters |
 
@@ -89,9 +89,9 @@ dwop-platform/
 2. **Audit Service Reconciliation**:
    - The centralized `AuditService` and `AuditEvent` (Table 19) have already been fully built, retroactively wired to all existing modules, and verified with 100% passing tests (`backend/scripts/test_dwop013_audit_timeline.py`).
    - You do not need to rewrite the Audit engine.
-3. **Your Next Focus Area (Supervisory / Tables 17 & 18)**:
-   - Please review the locked ERD for **Table 17 (`compliance_records`)** and **Table 18 (`skills_evaluations`)**.
-   - If developing support for Tables 17 & 18 or ADR-001, please create your feature branch: `feature/khalifa-compliance-records`.
+3. **Your Next Focus Area (Supervisory / Entities 17 & 18)**:
+   - Please review the locked ERD for **Entity 17 (`DOCUMENT_ACKNOWLEDGEMENT`)** and **Entity 18 (`NOTIFICATION`)**.
+   - When developing support for Entity 17 or 18, please create an isolated feature branch (e.g. `feature/khalifa-governance`).
    - Ensure all models are placed inside `backend/app/models/`, schemas in `backend/app/schemas/`, and routers in `backend/app/api/`.
 
 ---
