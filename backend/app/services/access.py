@@ -193,6 +193,23 @@ class AccessService:
         self.db.refresh(request)
         return request
 
+    def _is_manager_for_professional(
+        self, tenant_id: uuid.UUID, manager_user_id: uuid.UUID, professional_id: uuid.UUID
+    ) -> bool:
+        """Verify if manager supervises this professional via an active onboarding run."""
+        from app.models.onboarding import OnboardingRun
+
+        run = (
+            self.db.query(OnboardingRun)
+            .filter(
+                OnboardingRun.tenant_id == tenant_id,
+                OnboardingRun.professional_id == professional_id,
+                OnboardingRun.assigned_manager_id == manager_user_id,
+            )
+            .first()
+        )
+        return run is not None
+
     def approve_request(
         self,
         *,
@@ -202,6 +219,14 @@ class AccessService:
         rationale: str | None = None,
     ) -> AccessRequest:
         request = self._request(tenant_id, request_id)
+
+        # Locked RBAC Rule: ADMIN has global approval; MANAGER is restricted to direct reports
+        if approver.role == UserRole.MANAGER:
+            if not self._is_manager_for_professional(tenant_id, approver.id, request.professional_id):
+                raise AccessLifecycleError(
+                    "Managers are only authorized to approve access requests for direct reports or assigned team members."
+                )
+
         self._transition(request, AccessRequestStatus.approved, approver.id)
         request.approved_by_user_id = approver.id
         self.db.add(

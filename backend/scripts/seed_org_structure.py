@@ -38,6 +38,11 @@ from app.models.onboarding import (
     OnboardingRun,
     OnboardingItem,
 )
+from app.models.access import (
+    Integration,
+    IntegrationProvider,
+    IntegrationAuthType,
+)
 
 
 def seed():
@@ -420,6 +425,35 @@ def seed():
                 print(f"      Auto-triggered active OnboardingRun for Jane Doe! (Run ID: {active_run.id}, Tasks: 5)")
             else:
                 print(f"      Active OnboardingRun already exists for Jane Doe (Run ID: {active_run.id})")
+
+        # ---------------------------------------------------------------------
+        # Seed Default Integration (GitHub Sandbox Adapter)
+        # ---------------------------------------------------------------------
+        print("\n[7/7] Seeding Default Integrations (Provider Adapters)...")
+        github_integration = (
+            db.query(Integration)
+            .filter(
+                Integration.tenant_id == tenant.id,
+                Integration.provider == IntegrationProvider.github,
+            )
+            .first()
+        )
+        if not github_integration:
+            github_integration = Integration(
+                tenant_id=tenant.id,
+                provider=IntegrationProvider.github,
+                auth_type=IntegrationAuthType.oauth2,
+                connection_status="connected",
+                health_status="healthy",
+                credentials_encrypted={"mode": "sandbox_mock"},
+                scopes=["repo", "read:org"],
+            )
+            db.add(github_integration)
+            db.commit()
+            db.refresh(github_integration)
+            print(f"      Created Integration: GitHub Sandbox Adapter (ID: {github_integration.id})")
+        else:
+            print(f"      Integration already exists: GitHub Sandbox Adapter (ID: {github_integration.id})")
 
         print("\n" + "=" * 70)
         print("DWOP-006 SEEDING COMPLETED SUCCESSFULLY!")

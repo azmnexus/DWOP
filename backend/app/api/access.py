@@ -3,9 +3,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.core.dependencies import get_current_active_user, require_admin_or_manager
-from app.models.user import User
+from app.core.dependencies import (
+    get_current_active_user,
+    require_admin,
+    require_admin_or_manager,
+)
 from app.schemas.access import (
     AccessApprovalRequest,
     AccessProvisionResult,
@@ -103,7 +105,7 @@ async def provision_access_request(
 async def revoke_access_request(
     request_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin_or_manager),
+    current_user: User = Depends(require_admin),
 ):
     """Revoke provider access while preserving an auditable request history."""
     try:

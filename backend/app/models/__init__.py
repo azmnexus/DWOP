@@ -25,8 +25,9 @@ from app.models.access import (
     AccessType,
     ApprovalDecision,
     ApprovalOutcome,
-    AuditEvent,
 )
+from app.models.audit import AuditEvent
+
 from app.models.onboarding import (
     OnboardingTemplate,
     ChecklistTemplateItem,
