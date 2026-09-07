@@ -33,16 +33,40 @@ class AccessType(str, enum.Enum):
     generic = "generic"
 
 
-# Minimal Integration stub for FK integrity - matches spec's integration_id
+class IntegrationAuthType(str, enum.Enum):
+    oauth2 = "oauth2"
+    api_key = "api_key"
+    webhook = "webhook"
+
+
+class IntegrationConnectionStatus(str, enum.Enum):
+    connected = "connected"
+    disconnected = "disconnected"
+    error = "error"
+
+
 class Integration(Base):
+    """
+    ERD Table 14: Registry of connected third-party SaaS tools.
+    Full specification per AZM_Nexus_DWOP_Master_Project_Document_proposal.
+    """
+
     __tablename__ = "integrations"
 
     id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
-    provider: Mapped[str] = mapped_column(String(100), nullable=False, default="github")
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, default="github")
     name: Mapped[str] = mapped_column(String(255), nullable=False, default="default")
+    auth_type: Mapped[IntegrationAuthType] = mapped_column(
+        SAEnum(IntegrationAuthType, name="integration_auth_type"), nullable=False, default=IntegrationAuthType.oauth2
+    )
+    connection_status: Mapped[str] = mapped_column(String(50), nullable=False, default="disconnected")
+    health_status: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
+    credentials_encrypted: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    scopes: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=list)
     config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class AccessRequest(Base):

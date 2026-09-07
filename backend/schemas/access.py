@@ -9,16 +9,30 @@ from backend.models.access import AccessRequestStatus, AccessType, ApprovalOutco
 
 
 class IntegrationCreate(BaseModel):
-    provider: str = Field(default="github", max_length=100)
+    provider: str = Field(default="github", max_length=50)
     name: str = Field(default="default", max_length=255)
+    auth_type: str = Field(default="oauth2", max_length=50)
+    connection_status: str = Field(default="disconnected", max_length=50)
+    health_status: str = Field(default="unknown", max_length=50)
+    credentials_encrypted: dict | None = None
+    scopes: list | None = None
     config: dict | None = None
 
 
-class IntegrationRead(IntegrationCreate):
+class IntegrationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     tenant_id: uuid.UUID
+    provider: str
+    name: str
+    auth_type: str
+    connection_status: str
+    health_status: str
+    credentials_encrypted: dict | None = None
+    scopes: list | None = None
+    config: dict | None = None
     created_at: datetime
+    updated_at: datetime
 
 
 class AccessRequestBase(BaseModel):
