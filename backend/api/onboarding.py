@@ -25,7 +25,7 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
 
 # ---- Templates ----
-@router.post("/templates", response_model=OnboardingTemplateRead, status_code=201, dependencies=[Depends(RequireManager)])
+@router.post("/templates", response_model=OnboardingTemplateRead, status_code=201, dependencies=[Depends(RequireAdmin)])
 async def create_template(payload: OnboardingTemplateCreate, db: AsyncSession = Depends(get_db), current: User = Depends(get_current_user)):
     svc = OnboardingTemplateService(db)
     return await svc.create(payload.model_dump(), tenant_id=current.tenant_id)
@@ -44,7 +44,7 @@ async def get_template(template_id: uuid.UUID, db: AsyncSession = Depends(get_db
     return await svc.get(template_id, tenant_id=current.tenant_id)
 
 
-@router.patch("/templates/{template_id}", response_model=OnboardingTemplateRead, dependencies=[Depends(RequireManager)])
+@router.patch("/templates/{template_id}", response_model=OnboardingTemplateRead, dependencies=[Depends(RequireAdmin)])
 async def update_template(template_id: uuid.UUID, payload: OnboardingTemplateUpdate, db: AsyncSession = Depends(get_db), current: User = Depends(get_current_user)):
     svc = OnboardingTemplateService(db)
     return await svc.update(template_id, payload.model_dump(exclude_unset=True), tenant_id=current.tenant_id)
