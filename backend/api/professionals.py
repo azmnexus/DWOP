@@ -28,7 +28,7 @@ async def create_professional(
     return await svc.create_with_engagement(payload, tenant_id=current.tenant_id)
 
 
-@router.post("/bulk-import", response_model=list[ProfessionalRead], status_code=201, dependencies=[Depends(RequireManager)])
+@router.post("/bulk-import", response_model=list[ProfessionalRead], status_code=201, dependencies=[Depends(RequireAdmin)])
 async def bulk_import_professionals(
     payload: BulkImportRequest,
     db: AsyncSession = Depends(get_db),
@@ -44,7 +44,7 @@ async def bulk_import_professionals(
 
 
 # Synthetic helper: generate 10 synthetic professionals without client payload (for CLI/demo)
-@router.post("/bulk-import/synthetic", response_model=list[ProfessionalRead], status_code=201, dependencies=[Depends(RequireManager)])
+@router.post("/bulk-import/synthetic", response_model=list[ProfessionalRead], status_code=201, dependencies=[Depends(RequireAdmin)])
 async def bulk_import_synthetic(
     db: AsyncSession = Depends(get_db),
     current: User = Depends(get_current_user),
