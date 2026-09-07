@@ -25,6 +25,7 @@ from app.schemas.onboarding import (
     OnboardingItemUpdate,
     OnboardingItemRead,
 )
+from app.services.audit import AuditService
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding Engine"])
 
@@ -145,6 +146,21 @@ def start_onboarding_run(
         )
         db.add(run_item)
 
+    # Log immutable audit event for onboarding run instantiation
+    AuditService(db).log_event(
+        tenant_id=operator.tenant_id,
+        actor_user_id=operator.id,
+        action="onboarding_run.created",
+        target_type="OnboardingRun",
+        target_id=run.id,
+        metadata={
+            "professional_id": str(prof.id),
+            "template_id": str(tmpl.id),
+            "items_count": len(tmpl.items),
+        },
+        commit=False,
+    )
+
     db.commit()
     db.refresh(run)
     return run
@@ -261,6 +277,22 @@ def update_checklist_item(
         run.professional.status = ProfessionalStatus.ready
     else:
         run.status = "in_progress"
+
+    # Log immutable audit event for checklist task status change
+    AuditService(db).log_event(
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        action="onboarding_item.status_changed",
+        target_type="OnboardingItem",
+        target_id=item.id,
+        metadata={
+            "run_id": str(run.id),
+            "status": item.status,
+            "blocker_reason": item.blocker_reason,
+            "progress_pct": run.progress_pct,
+        },
+        commit=False,
+    )
 
     db.commit()
     db.refresh(item)

@@ -3,11 +3,13 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.database import get_db
 from app.core.dependencies import (
     get_current_active_user,
     require_admin,
     require_admin_or_manager,
 )
+from app.models.user import User
 from app.schemas.access import (
     AccessApprovalRequest,
     AccessProvisionResult,

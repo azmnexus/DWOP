@@ -20,6 +20,7 @@ from app.schemas.talent import (
     ProfessionalUpdate,
     ProfessionalRead,
 )
+from app.services.audit import AuditService
 
 router = APIRouter(prefix="/people", tags=["People & Intake"])
 
@@ -90,6 +91,17 @@ def create_person(
         )
         db.add(engagement)
 
+    # Log immutable audit event for candidate intake
+    AuditService(db).log_event(
+        tenant_id=operator.tenant_id,
+        actor_user_id=operator.id,
+        action="professional.created",
+        target_type="Professional",
+        target_id=professional.id,
+        metadata={"email": professional.email, "status": professional.status.value},
+        commit=False,
+    )
+
     db.commit()
     db.refresh(professional)
     return professional
@@ -153,6 +165,21 @@ def bulk_import_people(
                 db.add(eng)
 
             created_records.append(prof)
+
+        # Log immutable audit event for atomic cohort bulk import
+        if created_records:
+            AuditService(db).log_event(
+                tenant_id=admin_user.tenant_id,
+                actor_user_id=admin_user.id,
+                action="professional.bulk_imported",
+                target_type="Professional",
+                target_id=created_records[0].id,
+                metadata={
+                    "count": len(created_records),
+                    "cohort_emails": [p.email for p in created_records],
+                },
+                commit=False,
+            )
 
         db.commit()
         for record in created_records:

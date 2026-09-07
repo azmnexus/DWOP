@@ -1,9 +1,10 @@
 # DWOP Platform — Sprint 0 Engineering & Architecture Progress Report
 
-**Document Version**: 1.0 (Sprint 0 / Foundation Milestone)  
+**Document Version**: 1.1 (Sprint 0 / Access Lifecycle & Audit Ledger Milestone)  
 **Organization**: AZM Nexus Limited  
 **System**: Digital Workforce Operations Platform (DWOP)  
-**Status**: Completed through Ticket DWOP-006  
+**Status**: Completed through Ticket DWOP-013 (including DWOP-010, DWOP-011, DWOP-012 review & merge)  
+
 
 ---
 
@@ -89,6 +90,37 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
   - `PATCH /api/v1/onboarding/runs/{run_id}/items/{item_id}`: Allows completing or blocking items with audit justifications.
   - `GET /api/v1/onboarding/runs/{run_id}`: Full run inspection with dynamic completion percentage.
 
+### ✅ DWOP-010: Access Request Lifecycle (Oladotun + Walid Review)
+- Implemented models: `Integration` (Table 14), `AccessRequest` (Table 15), `ApprovalDecision` (Table 16).
+- Endpoints implemented:
+  - `GET /api/v1/access/requests`: Scoped access request directory (Members restricted to own requests).
+  - `POST /api/v1/access/requests`: Submit request in `requested` state.
+  - `POST /api/v1/access/requests/{id}/approve`: Approvals with rationale (Admin global, Manager restricted to direct reports).
+  - `POST /api/v1/access/requests/{id}/provision`: Calls provider adapter, transitions to `provisioned` or `failed`.
+  - `POST /api/v1/access/requests/{id}/revoke`: Revocation endpoint guarded strictly by `require_admin`.
+  - `GET /api/v1/access/requests/{id}/status`: Single request status inspection.
+
+### ✅ DWOP-011: Provider Adapter Framework (Oladotun + Atanda)
+- Provider-agnostic abstraction in `backend/app/integrations/base.py` (`BaseProviderAdapter`).
+- Factory and registry pattern in `backend/app/integrations/factory.py` (`get_provider_adapter`, `register_provider_adapter`).
+- Swappable provider mechanism without touching core domain services.
+
+### ✅ DWOP-012: Safe GitHub Mock Adapter POC (Oladotun)
+- In-memory sandbox implementation (`GitHubMockAdapter`) with zero network I/O (`network_io = False`).
+- Supports idempotent provisioning, revocation, simulated failure fallback (`simulate_failure: True`), and fail-closed error handling.
+
+### ✅ DWOP-013: Centralized Audit Service & Activity Timeline API (Khalifa / Walid)
+- Created dedicated model `AuditEvent` (Table 19) in `backend/app/models/audit.py`.
+- Centralized domain service `AuditService` in `backend/app/services/audit.py` (`log_event`, `list_logs`, `count_logs`).
+- Retroactively hooked immutable audit emission into:
+  - DWOP-004 Auth: `POST /api/v1/auth/login` emits `auth.login_successful`.
+  - DWOP-005 People: `POST /api/v1/people` emits `professional.created`; `POST /api/v1/people/bulk-import` emits `professional.bulk_imported`.
+  - DWOP-006 Onboarding: `POST /api/v1/onboarding/runs` emits `onboarding_run.created`; `PATCH /api/v1/onboarding/runs/{run_id}/items/{item_id}` emits `onboarding_item.status_changed`.
+  - DWOP-010 Access: State changes emit `access_request.created`, `access_request.status_changed`, `access_request.revocation_failed`.
+- Implemented read endpoints in `backend/app/api/audit.py`:
+  - `GET /api/v1/audit/logs`: Filterable timeline (`actor_user_id`, `action`, `target_type`, `skip`, `limit`) guarded by `require_admin`.
+  - `GET /api/v1/audit/export`: Tenant compliance ledger export summary.
+
 ---
 
 ## 4. Current Seed Data Reference
@@ -156,6 +188,10 @@ uvicorn app.main:app --reload --port 8000
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
+python scripts/test_dwop010_access_lifecycle.py
+python scripts/test_dwop011_adapters.py
+python scripts/test_dwop012_github_mock_poc.py
+python scripts/test_dwop013_audit_timeline.py
 ```
 
 * **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)

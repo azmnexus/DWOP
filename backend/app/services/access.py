@@ -15,6 +15,7 @@ from app.models.access import (
     AuditEvent,
     Integration,
 )
+from app.services.audit import AuditService
 from app.models.talent import Professional
 from app.models.user import User, UserRole
 
@@ -90,15 +91,14 @@ class AccessService:
         target_id: uuid.UUID,
         metadata: Dict[str, Any] | None = None,
     ) -> None:
-        self.db.add(
-            AuditEvent(
-                tenant_id=tenant_id,
-                actor_user_id=actor_user_id,
-                action=action,
-                target_type="access_request",
-                target_id=target_id,
-                event_metadata=metadata or {},
-            )
+        AuditService(self.db).log_event(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type="access_request",
+            target_id=target_id,
+            metadata=metadata or {},
+            commit=False,
         )
 
     def list_requests(self, current_user: User) -> Iterable[AccessRequest]:

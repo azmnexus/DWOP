@@ -9,6 +9,7 @@ from app.core.dependencies import get_current_active_user
 from app.core.security import verify_password, create_access_token
 from app.models.user import User
 from app.schemas.user import UserRead
+from app.services.audit import AuditService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -79,6 +80,17 @@ async def login(
         tenant_id=str(user.tenant_id),
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         email=user.email,
+    )
+
+    # Log immutable audit event for successful authentication
+    AuditService(db).log_event(
+        tenant_id=user.tenant_id,
+        actor_user_id=user.id,
+        action="auth.login_successful",
+        target_type="User",
+        target_id=user.id,
+        metadata={"email": user.email, "role": user.role.value if hasattr(user.role, "value") else str(user.role)},
+        commit=True,
     )
 
     return TokenResponse(
