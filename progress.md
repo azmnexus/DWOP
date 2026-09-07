@@ -121,9 +121,67 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
   - `GET /api/v1/audit/logs`: Filterable timeline (`actor_user_id`, `action`, `target_type`, `skip`, `limit`) guarded by `require_admin`.
   - `GET /api/v1/audit/export`: Tenant compliance ledger export summary.
 
+### ✅ DWOP-007: Diamond Glass UI System, Auth Flow & Enterprise App Shell (Usman)
+- **Design System & Aesthetics**:
+  - Implemented the Diamond Glass visual design system using curated CSS custom properties in `frontend/src/app/globals.css`.
+  - Glassmorphic translucent cards (`backdrop-filter: blur(12px)`), sapphire glowing borders, micro-interactions, responsive CSS grid.
+  - Component library built in `frontend/src/components/ui/`: `Button`, `Input`, `Card`, `Badge`, `Skeleton`, `Toast`, `EmptyState`, `ErrorState`.
+- **Authentication & State Management**:
+  - `frontend/src/contexts/AuthContext.tsx`: Token persistence via `localStorage` and `js-cookie`, handling login, logout, and user session hydration.
+  - `frontend/src/middleware.ts`: Next.js edge route protection redirecting unauthenticated users to `/login`.
+  - `frontend/src/app/login/page.tsx`: Glassmorphic split-screen corporate login with animated gradient background, error banners, and demo credential quick-fill.
+- **App Shell & Layout**:
+  - `AppHeader`: Sticky diamond-blur header with tenant branding, search shortcut, notifications bell, and user avatar dropdown.
+  - `Sidebar`: Desktop collapsible navigation with icon-accented active states and RBAC badge badges.
+  - `MobileDrawer`: Slide-over responsive navigation drawer for mobile and tablet viewports.
+
+### ✅ DWOP-008: Workforce Directory & Professional Profile View (Usman)
+- **Workforce Directory (`/workforce`)**:
+  - Real-time client-side search by name, email, or skill.
+  - Status filters (`All`, `Intake`, `Onboarding`, `Ready`, `Active`, `Offboarding`, `Exited`).
+  - Responsive data grid displaying avatar badges, contact details, skill chips, availability status, and dynamic action buttons.
+  - Zero mock data: Fetches directly from `GET /api/v1/people` with Bearer auth headers.
+  - Comprehensive states: Shimmer skeleton loaders during network transit, empty filter state, and inline retryable error states.
+- **Professional Detail View (`/workforce/[id]`)**:
+  - Deep-dive talent profile fetching from `GET /api/v1/people/{id}`.
+  - Multi-card modular layout: Identity & Contact, Lifecycle & Availability, Skills & Expertise, and Contract Engagement Terms.
+  - Supplementary onboarding runs check integration: Wired to `GET /api/v1/onboarding/runs?professional_id={id}`.
+
 ---
 
-## 4. Current Seed Data Reference
+## 4. API Endpoint Matrix & Frontend Consumption Status
+
+| HTTP Method | Endpoint Path | RBAC / Auth Guard | Ticket Mapping | Frontend Consumption Status |
+|---|---|---|---|---|
+| `POST` | `/api/v1/auth/login` | Public | DWOP-004 | ✅ Consumed in `frontend/src/app/login/page.tsx` & `AuthContext` |
+| `GET` | `/api/v1/auth/me` | Authenticated (`get_current_active_user`) | DWOP-004 | ✅ Consumed in `frontend/src/contexts/AuthContext.tsx` |
+| `GET` | `/api/v1/departments` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
+| `POST` | `/api/v1/departments` | `require_admin` | DWOP-003 | ⏳ Queued for Org Management UI |
+| `GET` | `/api/v1/departments/{id}` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
+| `GET` | `/api/v1/teams` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
+| `POST` | `/api/v1/teams` | `require_admin` | DWOP-003 | ⏳ Queued for Org Management UI |
+| `GET` | `/api/v1/people` | Authenticated | DWOP-005 | ✅ Consumed in `frontend/src/app/(authenticated)/workforce/page.tsx` |
+| `POST` | `/api/v1/people` | `require_admin_or_manager` | DWOP-005 | ⏳ Queued for Add Talent Modal |
+| `GET` | `/api/v1/people/{id}` | Authenticated | DWOP-005 | ✅ Consumed in `frontend/src/app/(authenticated)/workforce/[id]/page.tsx` |
+| `POST` | `/api/v1/people/bulk-import` | `require_admin` | DWOP-005 | ⏳ Queued for Bulk Import Modal |
+| `GET` | `/api/v1/onboarding/templates` | Authenticated | DWOP-006 | ⏳ Queued for Onboarding Setup UI |
+| `POST` | `/api/v1/onboarding/templates` | `require_admin` | DWOP-006 | ⏳ Queued for Onboarding Setup UI |
+| `POST` | `/api/v1/onboarding/runs` | `require_admin_or_manager` | DWOP-006 | ⏳ Queued for Trigger Onboarding Action |
+| `GET` | `/api/v1/onboarding/runs` | Authenticated | DWOP-006/Alignment | ✅ Ready (wired for `workforce/[id]` runs listing) |
+| `GET` | `/api/v1/onboarding/runs/{run_id}` | Authenticated | DWOP-006 | ⏳ Queued for `/onboarding/[run_id]` UI |
+| `PATCH` | `/api/v1/onboarding/runs/{run_id}/items/{item_id}` | Admin / Manager / Assigned Prof | DWOP-006 | ⏳ Queued for Checklist Interactive Tasks |
+| `GET` | `/api/v1/access/requests` | Authenticated (Members restricted to own) | DWOP-010 | ⏳ Queued for Access Management UI |
+| `POST` | `/api/v1/access/requests` | Authenticated | DWOP-010 | ⏳ Queued for Request Access Modal |
+| `POST` | `/api/v1/access/requests/{id}/approve` | Admin or Manager (direct report) | DWOP-010 | ⏳ Queued for Manager Approval Portal |
+| `POST` | `/api/v1/access/requests/{id}/provision` | `require_admin_or_manager` | DWOP-010 | ⏳ Queued for Provisioning Action |
+| `POST` | `/api/v1/access/requests/{id}/revoke` | `require_admin` | DWOP-010 | ⏳ Queued for Security Revocation Panel |
+| `GET` | `/api/v1/access/requests/{id}/status` | Authenticated | DWOP-010 | ⏳ Queued for Access Status Polling |
+| `GET` | `/api/v1/audit/logs` | `require_admin` | DWOP-013 | ⏳ Queued for Executive Activity Timeline UI |
+| `GET` | `/api/v1/audit/export` | `require_admin` | DWOP-013 | ⏳ Queued for Compliance Export Button |
+
+---
+
+## 5. Current Seed Data Reference
 
 The database seed script ([`backend/scripts/seed_org_structure.py`](file:///c:/Users/walid/OneDrive/Documents/Work/dwop-platform/backend/scripts/seed_org_structure.py)) provisions:
 
@@ -171,7 +229,7 @@ The database seed script ([`backend/scripts/seed_org_structure.py`](file:///c:/U
 
 ---
 
-## 5. How to Run & Verify
+## 6. How to Run & Verify
 
 ```bash
 # 1. Activate backend environment
