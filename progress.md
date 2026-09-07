@@ -105,7 +105,8 @@ The database seed script ([`backend/scripts/seed_org_structure.py`](file:///c:/U
 | Email | Password | Role | Permissions |
 |---|---|---|---|
 | `admin@azm-nexus.com` | `Admin123!` | `ADMIN` | Global governance, template authoring, bulk import, all mutations |
-| `atanda.david@azm-nexus.com` | `LeadAtanda2026!` | `MANAGER` | Department oversight, single candidate intake, onboarding management |
+| `atanda.david@azm-nexus.com` | `LeadAtanda2026!` | `ADMIN` | Systems architect, department/project creation, template authoring, bulk import |
+| `manager@azm-nexus.com` | `Manager123!` | `MANAGER` | Department oversight, single candidate intake, onboarding management |
 | `member@azm-nexus.com` | `Member123!` | `MEMBER` | Self-service profile, checklist item completion (writes blocked with 403) |
 
 ### 3. Organizational Structure

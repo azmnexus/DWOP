@@ -144,13 +144,29 @@ def seed():
             member_user.hashed_password = member_hashed
             member_user.role = UserRole.MEMBER
 
-        # 3. Manager user
-        manager_user = db.query(User).filter(User.email == "atanda.david@azm-nexus.com").first()
-        manager_hashed = get_password_hash("LeadAtanda2026!")
+        # 3. Atanda David - ADMIN (Systems Architect / Super Admin per Document Section 2)
+        atanda_user = db.query(User).filter(User.email == "atanda.david@azm-nexus.com").first()
+        atanda_hashed = get_password_hash("LeadAtanda2026!")
+        if not atanda_user:
+            atanda_user = User(
+                tenant_id=tenant.id,
+                email="atanda.david@azm-nexus.com",
+                hashed_password=atanda_hashed,
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            db.add(atanda_user)
+        else:
+            atanda_user.hashed_password = atanda_hashed
+            atanda_user.role = UserRole.ADMIN
+
+        # 4. Manager user (for demo: retains MANAGER role tier)
+        manager_user = db.query(User).filter(User.email == "manager@azm-nexus.com").first()
+        manager_hashed = get_password_hash("Manager123!")
         if not manager_user:
             manager_user = User(
                 tenant_id=tenant.id,
-                email="atanda.david@azm-nexus.com",
+                email="manager@azm-nexus.com",
                 hashed_password=manager_hashed,
                 role=UserRole.MANAGER,
                 is_active=True,
@@ -163,11 +179,13 @@ def seed():
         db.commit()
         db.refresh(admin_user)
         db.refresh(member_user)
+        db.refresh(atanda_user)
         db.refresh(manager_user)
 
         print(f"      Admin:   {admin_user.email} (Role: {admin_user.role.value})")
-        print(f"      Member:  {member_user.email} (Role: {member_user.role.value})")
+        print(f"      Atanda:  {atanda_user.email} (Role: {atanda_user.role.value})")
         print(f"      Manager: {manager_user.email} (Role: {manager_user.role.value})")
+        print(f"      Member:  {member_user.email} (Role: {member_user.role.value})")
 
         print("[5/8] Seeding Departments and Teams...")
         exec_dept = (
@@ -194,7 +212,7 @@ def seed():
             eng_dept = Department(
                 tenant_id=tenant.id,
                 name="Core Platform & Engineering",
-                manager_user_id=manager_user.id,
+                manager_user_id=atanda_user.id,
                 parent_department_id=exec_dept.id,
             )
             db.add(eng_dept)
@@ -211,7 +229,7 @@ def seed():
                 tenant_id=tenant.id,
                 department_id=eng_dept.id,
                 name="Backend & Cloud Architecture",
-                team_lead_id=manager_user.id,
+                team_lead_id=atanda_user.id,
             )
             db.add(backend_team)
 
@@ -434,7 +452,7 @@ def seed():
                     tenant_id=tenant.id,
                     professional_id=jane_prof.id,
                     template_id=template.id,
-                    assigned_manager_id=manager_user.id,
+                    assigned_manager_id=atanda_user.id,
                     status="in_progress",
                     progress_pct=0,
                 )
@@ -451,7 +469,7 @@ def seed():
                     run_task = OnboardingItem(
                         run_id=active_run.id,
                         title=t_item.title,
-                        owner_user_id=manager_user.id,
+                        owner_user_id=atanda_user.id,
                         status="pending",
                         due_date=due,
                     )
