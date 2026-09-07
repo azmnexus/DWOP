@@ -25,6 +25,9 @@ from backend.models.access import (
     AccessType,
 )
 from backend.models.audit import AuditEvent
+from backend.models.document_acknowledgement import DocumentAcknowledgement, AcknowledgementStatus
+from backend.models.notification import Notification, NotificationChannel, NotificationStatus
+from backend.models.access import IntegrationAuthType, IntegrationConnectionStatus
 
 __all__ = [
     "Base",
@@ -58,4 +61,11 @@ __all__ = [
     "ApprovalOutcome",
     "AccessType",
     "AuditEvent",
+    "DocumentAcknowledgement",
+    "AcknowledgementStatus",
+    "Notification",
+    "NotificationChannel",
+    "NotificationStatus",
+    "IntegrationAuthType",
+    "IntegrationConnectionStatus",
 ]
