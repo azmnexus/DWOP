@@ -72,6 +72,18 @@ class AccessRequestService(TenantScopedService[AccessRequest]):
         self.db.add(obj)
         await self.db.flush()
         await self.db.refresh(obj)
+        # === Auto-Audit for creation ===
+        from backend.services.audit_helpers import emit_audit
+
+        await emit_audit(
+            self.db,
+            action="ACCESS_REQUEST_CREATED",
+            target_type="AccessRequest",
+            target_id=obj.id,
+            actor_user_id=requested_by_user_id,
+            tenant_id=tid,
+            metadata={"professional_id": str(data.get("professional_id")), "integration_id": str(data.get("integration_id"))},
+        )
         return obj
 
     async def transition(
@@ -90,6 +102,7 @@ class AccessRequestService(TenantScopedService[AccessRequest]):
         if not req:
             raise HTTPException(status_code=404, detail="AccessRequest not found")
 
+        previous_status = req.status.value  # capture before mutation
         self._assert_transition(req.status, target_status)
 
         # Record approval decision for approved/rejected paths
@@ -129,6 +142,36 @@ class AccessRequestService(TenantScopedService[AccessRequest]):
             req.provisioned_at = datetime.now(timezone.utc)
         await self.db.flush()
         await self.db.refresh(req)
+        # === Auto-Audit ===
+        from backend.services.audit_helpers import emit_audit, emit_notification
+
+        await emit_audit(
+            self.db,
+            action=f"ACCESS_REQUEST_{target_status.value.upper()}",
+            target_type="AccessRequest",
+            target_id=req.id,
+            actor_user_id=actor_user_id,
+            tenant_id=tid,
+            metadata={"from_status": previous_status, "to_status": target_status.value, "rationale": rationale},
+        )
+
+        # === Notification Dispatch ===
+        # Notify the person who originally requested the access
+        status_labels = {
+            AccessRequestStatus.approved: ("Access Approved", "Your access request has been approved."),
+            AccessRequestStatus.provisioned: ("Access Provisioned", "Your access has been provisioned and is now active."),
+            AccessRequestStatus.failed: ("Access Denied", "Your access request was denied."),
+            AccessRequestStatus.revoked: ("Access Revoked", "Your access has been revoked."),
+        }
+        if target_status in status_labels:
+            title, msg = status_labels[target_status]
+            await emit_notification(
+                self.db,
+                tenant_id=tid,
+                recipient_user_id=req.requested_by_user_id,
+                title=title,
+                message=f"{msg} Request ID: {req.id}. Rationale: {rationale or 'N/A'}",
+            )
         return req
 
     async def list_for_professional(self, professional_id: uuid.UUID, tenant_id: uuid.UUID | None = None):

@@ -102,6 +102,18 @@ class ProfessionalService(TenantScopedService[Professional]):
                 prof = await self.create_with_engagement(item, tenant_id=tid)
                 created.append(prof)
             # All 10 succeeded - flush already done per item; if any email dup, exception bubbles and outer rollback triggers
+            # === Auto-Audit + Notification ===
+            from backend.services.audit_helpers import emit_audit
+
+            for prof in created:
+                await emit_audit(
+                    self.db,
+                    action="PROFESSIONAL_BULK_IMPORTED",
+                    target_type="Professional",
+                    target_id=prof.id,
+                    tenant_id=tid,
+                    metadata={"email": prof.email, "cohort_size": len(created)},
+                )
             return created
         except HTTPException:
             # Ensure partial inserts are rolled back - caller will see 400/409 and outer session rollback will revert

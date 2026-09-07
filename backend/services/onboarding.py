@@ -135,6 +135,27 @@ class OnboardingService:
         await self.db.refresh(run)
         # progress recalc (0% initially)
         await self.recalc_progress(run.id, tenant_id=tid)
+        # === Auto-Audit ===
+        from backend.services.audit_helpers import emit_audit, emit_notification
+
+        await emit_audit(
+            self.db,
+            action="ONBOARDING_RUN_CREATED",
+            target_type="OnboardingRun",
+            target_id=run.id,
+            actor_user_id=assigned_manager_id,
+            tenant_id=tid,
+            metadata={"professional_id": str(professional_id), "template_id": str(template_id), "items_count": len(checklist_items)},
+        )
+        # === Notification: notify the assigned manager ===
+        if assigned_manager_id:
+            await emit_notification(
+                self.db,
+                tenant_id=tid,
+                recipient_user_id=assigned_manager_id,
+                title="New Onboarding Run Assigned",
+                message=f"An onboarding run has been created and assigned to you. Run ID: {run.id}. Professional ID: {professional_id}.",
+            )
         return run
 
     async def recalc_progress(self, run_id: uuid.UUID, tenant_id: uuid.UUID | None = None) -> OnboardingRun:
@@ -195,5 +216,36 @@ class OnboardingService:
             raise HTTPException(status_code=400, detail="blocker_reason required when status=blocked")
         await self.db.flush()
         await self.recalc_progress(item.run_id, tenant_id=tid)
+        # === Auto-Audit ===
+        from backend.services.audit_helpers import emit_audit, emit_notification
+
+        await emit_audit(
+            self.db,
+            action=f"ONBOARDING_ITEM_{status.value.upper()}",
+            target_type="OnboardingItem",
+            target_id=item.id,
+            tenant_id=tid,
+            metadata={"new_status": status.value, "blocker_reason": extra.get("blocker_reason")},
+        )
+        # === Notification: notify owner when item is blocked ===
+        if status == OnboardingItemStatus.blocked and item.owner_user_id:
+            await emit_notification(
+                self.db,
+                tenant_id=tid,
+                recipient_user_id=item.owner_user_id,
+                title="Onboarding Item Blocked",
+                message=f"Item '{item.title}' is blocked. Reason: {extra.get('blocker_reason', 'N/A')}",
+            )
+        # === Notification: notify owner when run completes (100%) ===
+        run_result = await self.db.execute(select(OnboardingRun).where(OnboardingRun.id == item.run_id, OnboardingRun.tenant_id == tid))
+        updated_run = run_result.scalar_one_or_none()
+        if updated_run and updated_run.status == OnboardingRunStatus.completed and updated_run.assigned_manager_id:
+            await emit_notification(
+                self.db,
+                tenant_id=tid,
+                recipient_user_id=updated_run.assigned_manager_id,
+                title="Onboarding Complete",
+                message=f"All checklist items for onboarding run {updated_run.id} are now complete (100%).",
+            )
         await self.db.refresh(item)
         return item
