@@ -2,7 +2,7 @@
 
 **Status**: Proposed
 **Date**: 2026-09-07
-**Authors**: Atanda David, Khalifa
+**Authors**: Khalifa
 **Deciders**: AZM Nexus Engineering Leadership
 
 ## Context

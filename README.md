@@ -115,11 +115,28 @@ Once the backend server is running on port **`8000`**, you can access the follow
   - `GET /api/v1/people`: Scoped directory of talent in tenant.
   - `POST /api/v1/people/bulk-import`: Atomic batch intake of candidates in one transaction (Requires ADMIN).
 
+### 4. Ticket DWOP-006: Onboarding Templates, Runs & Checklist Engine (Completed)
+- Models: `OnboardingTemplate`, `OnboardingRun`, `OnboardingItem`.
+- Endpoints for template authoring, run instantiation, and item status progression.
+
+### 5. Ticket DWOP-010: Access Lifecycle Provisioning (Completed)
+- Models: `Integration` (full Table 14 spec), `AccessRequest`.
+- Lifecycle management (requested, approved, provisioned, failed, revoked).
+
+### 6. Ticket DWOP-013 & ERD Gaps (Completed)
+- Immutable `AuditEvent` ledger for tracking state changes.
+- Automatic audit logging and `Notification` (Table 18) dispatch for governance events.
+- `DocumentAcknowledgement` (Table 17) functionality.
+
+### 7. Ticket DWOP-020: Scaling ADR (Completed)
+- Documented transition triggers from 10 to 1,000 active users (`docs/adr-001-scaling-10-to-1000.md`).
+
 ### Seeded Test Credentials (All Passwords Explicitly Bcrypt Hashed):
 | Account | Email | Password | Role | Access Level |
 |---|---|---|---|---|
 | **Admin** | `admin@azm-nexus.com` | `Admin123!` | `ADMIN` | Full read and write (POST/PUT/DELETE) + Bulk Import |
-| **Manager** | `atanda.david@azm-nexus.com` | `LeadAtanda2026!` | `MANAGER` | Team lead oversight + Single Professional Intake |
+| **Atanda David** | `atanda.david@azm-nexus.com` | `LeadAtanda2026!` | `ADMIN` | Systems Architect / Super Admin |
+| **Manager** | `manager@azm-nexus.com` | `Manager123!` | `MANAGER` | Team lead oversight + Single Professional Intake |
 | **Standard Member** | `member@azm-nexus.com` | `Member123!` | `MEMBER` | Read-only (GET); Mutating operations return **403 Forbidden** |
 
 ---
