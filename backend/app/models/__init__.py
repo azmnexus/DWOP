@@ -28,6 +28,13 @@ from app.models.access import (
 )
 from app.models.assignment import Assignment, AssignmentStatus
 from app.models.audit import AuditEvent
+from app.models.governance import (
+    DocumentAcknowledgement,
+    DocumentAcknowledgementStatus,
+    Notification,
+    NotificationChannel,
+    NotificationStatus,
+)
 
 from app.models.onboarding import (
     OnboardingTemplate,
@@ -68,4 +75,9 @@ __all__ = [
     "Assignment",
     "AssignmentStatus",
     "AuditEvent",
+    "DocumentAcknowledgement",
+    "DocumentAcknowledgementStatus",
+    "Notification",
+    "NotificationChannel",
+    "NotificationStatus",
 ]
