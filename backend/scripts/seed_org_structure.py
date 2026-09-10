@@ -45,14 +45,44 @@ from app.models.access import (
 )
 
 
+def seed_default_github_integration(
+    db, tenant: Tenant
+) -> tuple[Integration, bool]:
+    """Ensure the tenant has one network-free GitHub demo integration."""
+    integration = (
+        db.query(Integration)
+        .filter(
+            Integration.tenant_id == tenant.id,
+            Integration.provider == IntegrationProvider.github,
+        )
+        .first()
+    )
+    if integration:
+        return integration, False
+
+    integration = Integration(
+        tenant_id=tenant.id,
+        provider=IntegrationProvider.github,
+        auth_type=IntegrationAuthType.oauth2,
+        connection_status="connected",
+        health_status="healthy",
+        credentials_encrypted={},
+        scopes=["repo"],
+    )
+    db.add(integration)
+    db.commit()
+    db.refresh(integration)
+    return integration, True
+
+
 def seed():
-    print("[1/7] Ensuring database tables are created...")
+    print("[1/8] Ensuring database tables are created...")
     Base.metadata.create_all(bind=engine)
     print("      Tables verified successfully.")
 
     db = SessionLocal()
     try:
-        print("[2/7] Seeding Root Tenant: AZM Nexus...")
+        print("[2/8] Seeding Root Tenant: AZM Nexus...")
         tenant = db.query(Tenant).filter(Tenant.slug == "azm-nexus").first()
         if not tenant:
             tenant = Tenant(
@@ -74,7 +104,15 @@ def seed():
         else:
             print(f"      Tenant already exists: {tenant.name} (ID: {tenant.id})")
 
-        print("[3/7] Seeding Users with HASHED Passwords (Admin, Member, Manager)...")
+        print("[3/8] Seeding Default GitHub Sandbox Integration...")
+        github_integration, created = seed_default_github_integration(db, tenant)
+        action = "Created" if created else "Already exists"
+        print(
+            f"      {action}: GitHub sandbox integration "
+            f"(ID: {github_integration.id})"
+        )
+
+        print("[4/8] Seeding Users with HASHED Passwords (Admin, Member, Manager)...")
         # 1. Admin user
         admin_user = db.query(User).filter(User.email == "admin@azm-nexus.com").first()
         admin_hashed = get_password_hash("Admin123!")
