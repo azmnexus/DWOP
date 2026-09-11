@@ -1,204 +1,24 @@
 'use client';
-
-import React, { useEffect, useState } from 'react';
-import { Users, ClipboardList, TrendingUp, UserCheck } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { AlertOctagon, BriefcaseBusiness, CircleCheckBig, Gauge, UserMinus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { api } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
+import { api, ApiRequestError } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
-import type { ProfessionalRead } from '@/types';
+import type { ProfessionalRead, ProjectRead } from '@/types';
+import styles from './dashboard.module.css';
 
-interface StatCardProps {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-  subtitle?: string;
+export default function OverviewPage(){
+ const{user}=useAuth();const[people,setPeople]=useState<ProfessionalRead[]>([]);const[projects,setProjects]=useState<ProjectRead[]>([]);const[utilization,setUtilization]=useState(0);const[loading,setLoading]=useState(true);const[error,setError]=useState<string|null>(null);
+ const load=useCallback(async()=>{setLoading(true);setError(null);try{const[p,pr,capacity]=await Promise.all([api.get<ProfessionalRead[]>('/people/?limit=100'),api.get<ProjectRead[]>('/assignments/projects?limit=100'),api.get<{total_capacity_allocated_pct:number}>('/assignments/capacity')]);setPeople(p);setProjects(pr);setUtilization(capacity.total_capacity_allocated_pct)}catch(e){setError(e instanceof ApiRequestError?e.userMessage:'Unable to load the dashboard.')}finally{setLoading(false)}},[]);useEffect(()=>{load()},[load]);
+ const active=people.filter(p=>p.status==='assigned').length;const blocked='—';const ready=people.filter(p=>p.status==='ready').length;const unassigned=people.filter(p=>p.availability_status==='available'&&p.status!=='inactive').length;const readiness=people.length?Math.round((ready/people.length)*100):0;const onboarding=people.length?Math.round((people.filter(p=>['ready','assigned'].includes(p.status)).length/people.length)*100):0;
+ if(error)return <ErrorState type="error" message={error} onRetry={load}/>;
+ return <div className="fade-in"><div className={styles.header}><div><h2>Good {new Date().getHours()<12?'morning':new Date().getHours()<17?'afternoon':'evening'}{user?`, ${user.email.split('@')[0]}`:''}</h2><p>Executive workforce readiness and delivery control.</p></div>{user&&<Badge role={user.role}/>}</div>
+ {loading?<div className={styles.kpis}>{[1,2,3,4].map(i=><Card key={i}><Skeleton width="100%" height="70px"/></Card>)}</div>:<><div className={styles.kpis}><Kpi icon={<BriefcaseBusiness/>} label="Active" value={active} note="Professionals assigned"/><Kpi icon={<AlertOctagon/>} label="Blocked" value={blocked} note="Onboarding blockers" tone="warning"/><Kpi icon={<UserMinus/>} label="Unassigned" value={unassigned} note="No current allocation"/><Kpi icon={<CircleCheckBig/>} label="Ready" value={ready} note="Ready for assignment" tone="success"/></div><div className={styles.insights}><Ring label="Workforce readiness" value={readiness}/><Ring label="Capacity utilization" value={utilization}/><Ring label="Onboarding completion" value={onboarding}/><Card><div className={styles.compact}><Users/><div><strong>{people.length}</strong><span>Professionals</span></div></div><div className={styles.compact}><BriefcaseBusiness/><div><strong>{projects.filter(p=>String(p.status).toLowerCase()==='active').length}</strong><span>Active projects</span></div></div><div className={styles.compact}><Gauge/><div><strong>{active}</strong><span>Assigned professionals</span></div></div></Card></div>
+ {people.length===0?<Card><p className={styles.empty}>No workforce data is available yet. Dashboard metrics will update from the API when the demonstration cohort is seeded.</p></Card>:<section className={styles.section}><h3>Workforce readiness</h3><Card padded={false}>{people.slice(0,10).map((p,i)=><div className={styles.person} key={p.id} style={{borderBottom:i<Math.min(people.length,10)-1?'1px solid var(--color-border)':'none'}}><span className={styles.avatar}>{p.first_name[0]}{p.last_name[0]}</span><div><strong>{p.first_name} {p.last_name}</strong><small>{p.email}</small></div><Badge status={p.status}/><span className={styles.availability}>{p.availability_status.replaceAll('_',' ')}</span></div>)}</Card></section>}</>}
+ </div>
 }
-
-function StatCard({ icon, label, value, subtitle }: StatCardProps) {
-  return (
-    <Card>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-md)' }}>
-        <div style={{
-          width: 48,
-          height: 48,
-          borderRadius: 'var(--radius-md)',
-          background: 'var(--color-surface-secondary)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--color-brand-primary)',
-          flexShrink: 0,
-        }}>
-          {icon}
-        </div>
-        <div>
-          <div style={{
-            fontSize: 'var(--font-size-2xl)',
-            fontWeight: 'var(--font-weight-bold)',
-            color: 'var(--color-text-primary)',
-            lineHeight: 1.2,
-          }}>
-            {value}
-          </div>
-          <div style={{
-            fontSize: 'var(--font-size-sm)',
-            color: 'var(--color-text-secondary)',
-          }}>
-            {label}
-          </div>
-          {subtitle && (
-            <div style={{
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-muted)',
-              marginTop: 2,
-            }}>
-              {subtitle}
-            </div>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-export default function OverviewPage() {
-  const { user } = useAuth();
-  const [people, setPeople] = useState<ProfessionalRead[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const data = await api.get<ProfessionalRead[]>('/people/');
-        setPeople(data);
-      } catch {
-        // Silently fail — dashboard is informational
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchStats();
-  }, []);
-
-  const readyCount = people.filter(p => p.status === 'ready').length;
-  const onboardingCount = people.filter(p => p.status === 'onboarding').length;
-  const intakeCount = people.filter(p => p.status === 'intake').length;
-
-  const greeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  return (
-    <div className="fade-in">
-      {/* Greeting */}
-      <div style={{ marginBottom: 'var(--spacing-xl)' }}>
-        <h2 style={{ fontSize: 'var(--font-size-2xl)', marginBottom: 'var(--spacing-xs)' }}>
-          {greeting()}{user ? `, ${user.email.split('@')[0]}` : ''}
-        </h2>
-        <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-          Here&apos;s an overview of your workforce operations.
-          {user && <> You are signed in as <Badge role={user.role} /></>}
-        </p>
-      </div>
-
-      {/* Stats Grid */}
-      {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--spacing-md)' }}>
-          {[1, 2, 3, 4].map(i => (
-            <Card key={i}>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <Skeleton circle width="48px" height="48px" />
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <Skeleton width="60px" height="24px" />
-                  <Skeleton width="100px" height="14px" />
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--spacing-md)' }}>
-          <StatCard
-            icon={<Users size={22} />}
-            label="Total Professionals"
-            value={people.length}
-            subtitle="Across all statuses"
-          />
-          <StatCard
-            icon={<UserCheck size={22} />}
-            label="Ready"
-            value={readyCount}
-            subtitle="Available for assignment"
-          />
-          <StatCard
-            icon={<ClipboardList size={22} />}
-            label="Onboarding"
-            value={onboardingCount}
-            subtitle="Currently onboarding"
-          />
-          <StatCard
-            icon={<TrendingUp size={22} />}
-            label="New Intake"
-            value={intakeCount}
-            subtitle="Pending processing"
-          />
-        </div>
-      )}
-
-      {/* Recent Professionals */}
-      {!loading && people.length > 0 && (
-        <div style={{ marginTop: 'var(--spacing-xl)' }}>
-          <h3 style={{ fontSize: 'var(--font-size-lg)', marginBottom: 'var(--spacing-md)' }}>
-            Recent Professionals
-          </h3>
-          <Card padded={false}>
-            {people.slice(0, 5).map((person, idx) => (
-              <div
-                key={person.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: 'var(--spacing-md) var(--spacing-lg)',
-                  borderBottom: idx < Math.min(people.length, 5) - 1 ? '1px solid var(--color-border)' : 'none',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
-                  <div style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--color-brand-primary), var(--color-brand-accent))',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'white',
-                    fontSize: 'var(--font-size-xs)',
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}>
-                    {person.first_name[0]}{person.last_name[0]}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
-                      {person.first_name} {person.last_name}
-                    </div>
-                    <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                      {person.email}
-                    </div>
-                  </div>
-                </div>
-                <Badge status={person.status} />
-              </div>
-            ))}
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-}
+function Kpi({icon,label,value,note,tone}:{icon:React.ReactNode;label:string;value:number|string;note:string;tone?:string}){return <Card><div className={`${styles.kpiIcon} ${tone?styles[tone]:''}`}>{icon}</div><div className={styles.kpiValue}>{value}</div><strong>{label}</strong><p>{note}</p></Card>}
+function Ring({label,value}:{label:string;value:number}){const safe=Math.max(0,Math.min(value,100));return <Card><div className={styles.ring} style={{background:`conic-gradient(var(--color-brand-accent) ${safe*3.6}deg,var(--color-surface-secondary) 0)`}}><span>{safe}%</span></div><strong>{label}</strong><p>Derived from current DWOP records</p></Card>}

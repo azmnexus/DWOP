@@ -1,0 +1,31 @@
+'use client';
+import { useMemo, useState } from 'react';
+import { CalendarDays, CircleUserRound, Plus, Users } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import type { ProfessionalRead } from '@/types';
+import ui from '@/components/ui/ui.module.css';
+import styles from '../assignments.module.css';
+
+type Stage='backlog'|'todo'|'in_progress'|'blocked'|'review'|'completed';
+type Ticket={id:string;title:string;description:string;priority:'low'|'medium'|'high'|'critical';stage:Stage;assigneeId:string;dueDate:string};
+const stages:{id:Stage;label:string}[]=[{id:'backlog',label:'Backlog'},{id:'todo',label:'Todo'},{id:'in_progress',label:'In progress'},{id:'blocked',label:'Blocked'},{id:'review',label:'In review'},{id:'completed',label:'Completed'}];
+
+export function WorkBoardPrototype({people}:{people:ProfessionalRead[]}){
+ const[members,setMembers]=useState<string[]>([]),[tickets,setTickets]=useState<Ticket[]>([]),[memberOpen,setMemberOpen]=useState(false),[ticketOpen,setTicketOpen]=useState(false);
+ const[selectedMember,setSelectedMember]=useState('');
+ const[draft,setDraft]=useState({title:'',description:'',priority:'medium' as Ticket['priority'],assigneeId:'',dueDate:''});
+ const memberPeople=useMemo(()=>people.filter(p=>members.includes(p.id)),[people,members]);
+ const addMember=(e:React.FormEvent)=>{e.preventDefault();if(selectedMember&&!members.includes(selectedMember))setMembers([...members,selectedMember]);setSelectedMember('');setMemberOpen(false)};
+ const createTicket=(e:React.FormEvent)=>{e.preventDefault();if(!draft.title.trim())return;setTickets([...tickets,{...draft,id:crypto.randomUUID(),title:draft.title.trim(),stage:'backlog'}]);setDraft({title:'',description:'',priority:'medium',assigneeId:'',dueDate:''});setTicketOpen(false)};
+ const move=(id:string,stage:Stage)=>setTickets(tickets.map(t=>t.id===id?{...t,stage}:t));
+ const name=(id:string)=>{const p=people.find(x=>x.id===id);return p?`${p.first_name} ${p.last_name}`:'Unassigned'};
+ return <section className={styles.boardSection}>
+  <div className={styles.boardToolbar}><div><div className={styles.prototypeTag}>Interactive prototype · session only</div><h3>Delivery board</h3><p>Model the workflow now; refresh clears placeholder members and tickets.</p></div><div className={styles.boardActions}><Button variant="secondary" size="sm" onClick={()=>setMemberOpen(true)}><Users size={15}/>Add member</Button><Button size="sm" onClick={()=>setTicketOpen(true)}><Plus size={15}/>Create ticket</Button></div></div>
+  <div className={styles.memberStrip}><span>Board members</span>{memberPeople.length?memberPeople.map(p=><div title={`${p.first_name} ${p.last_name}`} className={styles.memberAvatar} key={p.id}>{p.first_name[0]}{p.last_name[0]}</div>):<small>No members added in this session</small>}</div>
+  <div className={styles.ticketBoard}>{stages.map(stage=><div className={styles.ticketLane} key={stage.id}><header><strong>{stage.label}</strong><span>{tickets.filter(t=>t.stage===stage.id).length}</span></header><div className={styles.ticketStack}>{tickets.filter(t=>t.stage===stage.id).map(t=><article className={styles.ticketCard} key={t.id}><span className={`${styles.priority} ${styles[t.priority]}`}>{t.priority}</span><h4>{t.title}</h4>{t.description&&<p>{t.description}</p>}<div className={styles.ticketMeta}><span><CircleUserRound size={13}/>{name(t.assigneeId)}</span>{t.dueDate&&<span><CalendarDays size={13}/>{new Date(`${t.dueDate}T00:00:00`).toLocaleDateString()}</span>}</div><label>Move to<select value={t.stage} onChange={e=>move(t.id,e.target.value as Stage)}>{stages.map(s=><option value={s.id} key={s.id}>{s.label}</option>)}</select></label></article>)}{!tickets.some(t=>t.stage===stage.id)&&<button className={styles.quickAdd} onClick={()=>setTicketOpen(true)}><Plus size={14}/>Add ticket</button>}</div></div>)}</div>
+  <Modal isOpen={memberOpen} onClose={()=>setMemberOpen(false)} title="Add board member"><form onSubmit={addMember}><label className={ui.inputWrapper}><span className={ui.inputLabel}>Professional</span><select required className={ui.selectField} value={selectedMember} onChange={e=>setSelectedMember(e.target.value)}><option value="">Select professional</option>{people.filter(p=>!members.includes(p.id)).map(p=><option value={p.id} key={p.id}>{p.first_name} {p.last_name} · {p.availability_status.replaceAll('_',' ')}</option>)}</select></label><div className={ui.modalActions}><Button type="button" variant="ghost" onClick={()=>setMemberOpen(false)}>Cancel</Button><Button type="submit">Add member</Button></div></form></Modal>
+  <Modal isOpen={ticketOpen} onClose={()=>setTicketOpen(false)} title="Create ticket"><form onSubmit={createTicket}><div className={ui.formGrid}><Input label="Ticket title" required value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/><label className={ui.inputWrapper}><span className={ui.inputLabel}>Description</span><textarea className={ui.textareaField} value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})}/></label><div className={ui.formRow}><label className={ui.inputWrapper}><span className={ui.inputLabel}>Priority</span><select className={ui.selectField} value={draft.priority} onChange={e=>setDraft({...draft,priority:e.target.value as Ticket['priority']})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label><Input label="Due date" type="date" value={draft.dueDate} onChange={e=>setDraft({...draft,dueDate:e.target.value})}/></div><label className={ui.inputWrapper}><span className={ui.inputLabel}>Assignee</span><select className={ui.selectField} value={draft.assigneeId} onChange={e=>setDraft({...draft,assigneeId:e.target.value})}><option value="">Unassigned</option>{memberPeople.map(p=><option value={p.id} key={p.id}>{p.first_name} {p.last_name}</option>)}</select></label></div><div className={ui.modalActions}><Button type="button" variant="ghost" onClick={()=>setTicketOpen(false)}>Cancel</Button><Button type="submit">Create placeholder ticket</Button></div></form></Modal>
+ </section>
+}

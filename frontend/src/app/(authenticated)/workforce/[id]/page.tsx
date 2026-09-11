@@ -37,19 +37,6 @@ export default function ProfessionalProfilePage() {
       try {
         const data = await api.get<ProfessionalRead>(`/people/${personId}`);
         setPerson(data);
-
-        // Try to fetch onboarding data (may not exist for this professional)
-        // The backend doesn't have a "get runs by professional_id" endpoint,
-        // but we can check if the professional is in onboarding status
-        if (data.status === 'onboarding' || data.status === 'ready') {
-          try {
-            // Note: There's no endpoint to list runs by professional_id in the current API.
-            // We'll show the status but won't have detailed checklist items unless we know the run_id.
-            // This is a known limitation documented in the plan.
-          } catch {
-            // Silently fail — onboarding data is supplementary
-          }
-        }
       } catch (err) {
         if (err instanceof ApiRequestError) {
           if (err.status === 403) {

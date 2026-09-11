@@ -12,17 +12,23 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton, SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import type { ProfessionalRead, ProfessionalStatus, AvailabilityStatus } from '@/types';
+import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/components/ui/Toast';
+import type { ProfessionalCreate, ProfessionalRead, ProfessionalStatus, AvailabilityStatus } from '@/types';
 import styles from './workforce.module.css';
 import uiStyles from '@/components/ui/ui.module.css';
 
 export default function WorkforcePage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { showToast } = useToast();
 
   const [people, setPeople] = useState<ProfessionalRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ type: 'error' | 'network' | 'forbidden'; message?: string } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<ProfessionalCreate>({ first_name: '', last_name: '', email: '', phone: '', status: 'intake', availability_status: 'available', skills: [] });
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,10 +39,7 @@ export default function WorkforcePage() {
     setLoading(true);
     setError(null);
     try {
-      let endpoint = '/people/?limit=100';
-      if (statusFilter) endpoint += `&status_filter=${statusFilter}`;
-      if (availabilityFilter) endpoint += `&availability_filter=${availabilityFilter}`;
-      const data = await api.get<ProfessionalRead[]>(endpoint);
+      const data = await api.get<ProfessionalRead[]>('/people/?limit=100');
       setPeople(data);
     } catch (err) {
       if (err instanceof ApiRequestError) {
@@ -62,16 +65,20 @@ export default function WorkforcePage() {
 
   // Client-side text search (backend doesn't support text search)
   const filteredPeople = useMemo(() => {
-    if (!searchQuery.trim()) return people;
+    const scoped = people.filter(p =>
+      (!statusFilter || p.status === statusFilter) &&
+      (!availabilityFilter || p.availability_status === availabilityFilter)
+    );
+    if (!searchQuery.trim()) return scoped;
     const query = searchQuery.toLowerCase();
-    return people.filter(
+    return scoped.filter(
       (p) =>
         p.first_name.toLowerCase().includes(query) ||
         p.last_name.toLowerCase().includes(query) ||
         p.email.toLowerCase().includes(query) ||
         p.skills.some((s) => s.toLowerCase().includes(query))
     );
-  }, [people, searchQuery]);
+  }, [people, searchQuery, statusFilter, availabilityFilter]);
 
   const navigateToProfile = (id: string) => {
     router.push(`/workforce/${id}`);
@@ -79,6 +86,19 @@ export default function WorkforcePage() {
 
   const getInitials = (firstName: string, lastName: string) =>
     `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
+
+  const createProfessional = async (event: React.FormEvent) => {
+    event.preventDefault(); setSaving(true);
+    try {
+      await api.post<ProfessionalRead>('/people/', form);
+      showToast('success', 'Professional added to workforce intake.');
+      setAddOpen(false);
+      setForm({ first_name: '', last_name: '', email: '', phone: '', status: 'intake', availability_status: 'available', skills: [] });
+      await fetchPeople();
+    } catch (err) {
+      showToast('error', err instanceof ApiRequestError ? err.userMessage : 'Unable to add professional.');
+    } finally { setSaving(false); }
+  };
 
   // Error state
   if (error) {
@@ -106,7 +126,7 @@ export default function WorkforcePage() {
           )}
         </h2>
         {canWrite() && (
-          <Button variant="primary" size="sm">
+          <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
             <UserPlus size={16} />
             Add Professional
           </Button>
@@ -277,6 +297,24 @@ export default function WorkforcePage() {
           ))}
         </div>
       )}
+      <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title="Add professional">
+        <form onSubmit={createProfessional}>
+          <div className={uiStyles.formGrid}>
+            <div className={uiStyles.formRow}>
+              <Input label="First name" required value={form.first_name} onChange={e => setForm({...form, first_name:e.target.value})}/>
+              <Input label="Last name" required value={form.last_name} onChange={e => setForm({...form, last_name:e.target.value})}/>
+            </div>
+            <Input label="Work email" type="email" required value={form.email} onChange={e => setForm({...form, email:e.target.value})}/>
+            <Input label="Phone" value={form.phone || ''} onChange={e => setForm({...form, phone:e.target.value})}/>
+            <Input label="Skills" placeholder="FastAPI, React, Operations" value={form.skills?.join(', ') || ''} onChange={e => setForm({...form, skills:e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})}/>
+            <div className={uiStyles.formRow}>
+              <label className={uiStyles.inputWrapper}><span className={uiStyles.inputLabel}>Status</span><select className={uiStyles.selectField} value={form.status} onChange={e=>setForm({...form,status:e.target.value as ProfessionalStatus})}><option value="intake">Intake</option><option value="onboarding">Onboarding</option><option value="ready">Ready</option></select></label>
+              <label className={uiStyles.inputWrapper}><span className={uiStyles.inputLabel}>Availability</span><select className={uiStyles.selectField} value={form.availability_status} onChange={e=>setForm({...form,availability_status:e.target.value as AvailabilityStatus})}><option value="available">Available</option><option value="partially_booked">Partially booked</option><option value="fully_booked">Fully booked</option></select></label>
+            </div>
+          </div>
+          <div className={uiStyles.modalActions}><Button type="button" variant="ghost" onClick={()=>setAddOpen(false)}>Cancel</Button><Button type="submit" loading={saving}>Add professional</Button></div>
+        </form>
+      </Modal>
     </div>
   );
 }
