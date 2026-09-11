@@ -181,6 +181,109 @@ export interface OnboardingRunRead {
 }
 
 // ============================================================
+// Projects & Assignments
+// ============================================================
+
+export type ProjectStatus = 'active' | 'completed' | 'on_hold' | 'ACTIVE';
+
+export type ClientStatus = 'active' | 'inactive' | 'lead';
+
+export interface ClientRead {
+  id: string;
+  tenant_id: string;
+  name: string;
+  contact_email: string | null;
+  status: ClientStatus;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ProjectRead {
+  id: string;
+  tenant_id: string;
+  client_id: string | null;
+  name: string;
+  code: string;
+  status: ProjectStatus;
+  start_date: string | null;
+  target_end_date: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProjectCreate {
+  name: string;
+  code: string;
+  client_id?: string | null;
+  status?: ProjectStatus;
+  start_date?: string | null;
+  target_end_date?: string | null;
+}
+
+export interface ProjectUpdate {
+  name?: string | null;
+  code?: string | null;
+  client_id?: string | null;
+  status?: ProjectStatus | null;
+  start_date?: string | null;
+  target_end_date?: string | null;
+}
+
+export type AssignmentStatus = 'planned' | 'active' | 'completed' | 'reassigned' | 'cancelled';
+
+export interface AssignmentCreate {
+  professional_id: string;
+  project_id: string;
+  team_id?: string | null;
+  role_on_project?: string | null;
+  capacity_percentage?: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  status?: AssignmentStatus;
+}
+
+export interface AssignmentUpdate {
+  project_id?: string | null;
+  team_id?: string | null;
+  role_on_project?: string | null;
+  capacity_percentage?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  status?: AssignmentStatus | null;
+}
+
+export interface AssignmentRead extends AssignmentCreate {
+  id: string;
+  tenant_id: string;
+  capacity_percentage: number;
+  status: AssignmentStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamRead {
+  id: string;
+  tenant_id: string;
+  name: string;
+  department_id: string;
+  team_lead_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuditEventRead {
+  id: string;
+  tenant_id: string;
+  actor_user_id: string | null;
+  action: string;
+  target_type: string;
+  target_id: string;
+  metadata: Record<string, unknown> | null;
+  timestamp: string;
+  created_at: string;
+}
+
+// ============================================================
 // API Error
 // ============================================================
 
