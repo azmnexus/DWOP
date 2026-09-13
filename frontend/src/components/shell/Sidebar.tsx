@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -14,10 +14,10 @@ import {
   Activity,
   Settings,
   LogOut,
-} from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { Badge } from '@/components/ui/Badge';
-import styles from './shell.module.css';
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Badge } from "@/components/ui/Badge";
+import styles from "./shell.module.css";
 
 interface NavItem {
   label: string;
@@ -27,15 +27,60 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Overview', href: '/', icon: <LayoutDashboard size={18} />, enabled: true },
-  { label: 'Workforce', href: '/workforce', icon: <Users size={18} />, enabled: true },
-  { label: 'Onboarding', href: '/onboarding', icon: <ClipboardList size={18} />, enabled: true },
-  { label: 'Assignments', href: '/assignments', icon: <FolderKanban size={18} />, enabled: true },
-  { label: 'Clients', href: '/clients', icon: <Building2 size={18} />, enabled: true },
-  { label: 'Work Management', href: '/work', icon: <ListChecks size={18} />, enabled: true },
-  { label: 'Access', href: '/access', icon: <Shield size={18} />, enabled: false },
-  { label: 'Activity', href: '/activity', icon: <Activity size={18} />, enabled: false },
-  { label: 'Settings', href: '/settings', icon: <Settings size={18} />, enabled: false },
+  {
+    label: "Overview",
+    href: "/",
+    icon: <LayoutDashboard size={18} />,
+    enabled: true,
+  },
+  {
+    label: "Workforce",
+    href: "/workforce",
+    icon: <Users size={18} />,
+    enabled: true,
+  },
+  {
+    label: "Onboarding",
+    href: "/onboarding",
+    icon: <ClipboardList size={18} />,
+    enabled: true,
+  },
+  {
+    label: "Assignments",
+    href: "/assignments",
+    icon: <FolderKanban size={18} />,
+    enabled: true,
+  },
+  {
+    label: "Clients",
+    href: "/clients",
+    icon: <Building2 size={18} />,
+    enabled: true,
+  },
+  {
+    label: "Work Management",
+    href: "/work",
+    icon: <ListChecks size={18} />,
+    enabled: true,
+  },
+  {
+    label: "Access",
+    href: "/access",
+    icon: <Shield size={18} />,
+    enabled: false,
+  },
+  {
+    label: "Activity",
+    href: "/activity",
+    icon: <Activity size={18} />,
+    enabled: false,
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: <Settings size={18} />,
+    enabled: false,
+  },
 ];
 
 export function Sidebar() {
@@ -50,7 +95,12 @@ export function Sidebar() {
     <aside className={styles.sidebar} aria-label="Main navigation">
       {/* Brand */}
       <div className={styles.brand}>
-        <img src="/logo.png" alt="" className={styles.brandLogo} aria-hidden="true" />
+        <img
+          src="/logo.png"
+          alt=""
+          className={styles.brandLogo}
+          aria-hidden="true"
+        />
         <div className={styles.brandText}>
           <span className={styles.brandName}>AZM Nexus</span>
           <span className={styles.brandSub}>Digital Workspace Ops</span>
@@ -62,9 +112,10 @@ export function Sidebar() {
         <div className={styles.navSection}>
           <div className={styles.navSectionLabel}>Platform</div>
           {navItems.map((item) => {
-            const isActive = item.href === '/'
-              ? pathname === '/'
-              : pathname.startsWith(item.href);
+            const isActive =
+              item.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(item.href);
 
             if (!item.enabled) {
               return (
@@ -83,8 +134,8 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
-                aria-current={isActive ? 'page' : undefined}
+                className={`${styles.navItem} ${isActive ? styles.navItemActive : ""}`}
+                aria-current={isActive ? "page" : undefined}
               >
                 <span className={styles.navItemIcon}>{item.icon}</span>
                 {item.label}
@@ -104,7 +155,7 @@ export function Sidebar() {
             <div className={styles.userDetails}>
               <div className={styles.userName}>{user.email}</div>
               <div className={styles.userRole}>
-                <Badge role={user.role} />
+                <Badge kind="role" value={user.role} />
               </div>
             </div>
           </div>

@@ -1,24 +1,249 @@
-'use client';
-import { useCallback, useEffect, useState } from 'react';
-import { AlertOctagon, BriefcaseBusiness, CircleCheckBig, Gauge, UserMinus, Users } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { api, ApiRequestError } from '@/lib/api';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
-import { ErrorState } from '@/components/ui/ErrorState';
-import { Skeleton } from '@/components/ui/Skeleton';
-import type { ProfessionalRead, ProjectRead } from '@/types';
-import styles from './dashboard.module.css';
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import {
+  AlertOctagon,
+  BriefcaseBusiness,
+  CircleCheckBig,
+  Gauge,
+  UserMinus,
+  Users,
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { api, ApiRequestError } from "@/lib/api";
+import {
+  getAllPages,
+  getCapacityUtilization,
+  normalizeProjects,
+} from "@/lib/data";
+import { Badge } from "@/components/ui/Badge";
+import { Card } from "@/components/ui/Card";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import type {
+  CapacityOverviewRead,
+  ProfessionalRead,
+  ProjectRead,
+} from "@/types";
+import styles from "./dashboard.module.css";
 
-export default function OverviewPage(){
- const{user}=useAuth();const[people,setPeople]=useState<ProfessionalRead[]>([]);const[projects,setProjects]=useState<ProjectRead[]>([]);const[utilization,setUtilization]=useState(0);const[loading,setLoading]=useState(true);const[error,setError]=useState<string|null>(null);
- const load=useCallback(async()=>{setLoading(true);setError(null);try{const[p,pr,capacity]=await Promise.all([api.get<ProfessionalRead[]>('/people/?limit=100'),api.get<ProjectRead[]>('/assignments/projects?limit=100'),api.get<{total_capacity_allocated_pct:number}>('/assignments/capacity')]);setPeople(p);setProjects(pr);setUtilization(capacity.total_capacity_allocated_pct)}catch(e){setError(e instanceof ApiRequestError?e.userMessage:'Unable to load the dashboard.')}finally{setLoading(false)}},[]);useEffect(()=>{load()},[load]);
- const active=people.filter(p=>p.status==='assigned').length;const blocked='—';const ready=people.filter(p=>p.status==='ready').length;const unassigned=people.filter(p=>p.availability_status==='available'&&p.status!=='inactive').length;const readiness=people.length?Math.round((ready/people.length)*100):0;const onboarding=people.length?Math.round((people.filter(p=>['ready','assigned'].includes(p.status)).length/people.length)*100):0;
- if(error)return <ErrorState type="error" message={error} onRetry={load}/>;
- return <div className="fade-in"><div className={styles.header}><div><h2>Good {new Date().getHours()<12?'morning':new Date().getHours()<17?'afternoon':'evening'}{user?`, ${user.email.split('@')[0]}`:''}</h2><p>Executive workforce readiness and delivery control.</p></div>{user&&<Badge role={user.role}/>}</div>
- {loading?<div className={styles.kpis}>{[1,2,3,4].map(i=><Card key={i}><Skeleton width="100%" height="70px"/></Card>)}</div>:<><div className={styles.kpis}><Kpi icon={<BriefcaseBusiness/>} label="Active" value={active} note="Professionals assigned"/><Kpi icon={<AlertOctagon/>} label="Blocked" value={blocked} note="Onboarding blockers" tone="warning"/><Kpi icon={<UserMinus/>} label="Unassigned" value={unassigned} note="No current allocation"/><Kpi icon={<CircleCheckBig/>} label="Ready" value={ready} note="Ready for assignment" tone="success"/></div><div className={styles.insights}><Ring label="Workforce readiness" value={readiness}/><Ring label="Capacity utilization" value={utilization}/><Ring label="Onboarding completion" value={onboarding}/><Card><div className={styles.compact}><Users/><div><strong>{people.length}</strong><span>Professionals</span></div></div><div className={styles.compact}><BriefcaseBusiness/><div><strong>{projects.filter(p=>String(p.status).toLowerCase()==='active').length}</strong><span>Active projects</span></div></div><div className={styles.compact}><Gauge/><div><strong>{active}</strong><span>Assigned professionals</span></div></div></Card></div>
- {people.length===0?<Card><p className={styles.empty}>No workforce data is available yet. Dashboard metrics will update from the API when the demonstration cohort is seeded.</p></Card>:<section className={styles.section}><h3>Workforce readiness</h3><Card padded={false}>{people.slice(0,10).map((p,i)=><div className={styles.person} key={p.id} style={{borderBottom:i<Math.min(people.length,10)-1?'1px solid var(--color-border)':'none'}}><span className={styles.avatar}>{p.first_name[0]}{p.last_name[0]}</span><div><strong>{p.first_name} {p.last_name}</strong><small>{p.email}</small></div><Badge status={p.status}/><span className={styles.availability}>{p.availability_status.replaceAll('_',' ')}</span></div>)}</Card></section>}</>}
- </div>
+export default function OverviewPage() {
+  const { user } = useAuth();
+  const [people, setPeople] = useState<ProfessionalRead[]>([]);
+  const [projects, setProjects] = useState<ProjectRead[]>([]);
+  const [utilization, setUtilization] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [p, pr, capacity] = await Promise.all([
+        getAllPages<ProfessionalRead>("/people/"),
+        getAllPages<ProjectRead>("/assignments/projects"),
+        api.get<CapacityOverviewRead>("/assignments/capacity"),
+      ]);
+      setPeople(p);
+      setProjects(normalizeProjects(pr));
+      setUtilization(getCapacityUtilization(capacity));
+    } catch (e) {
+      setError(
+        e instanceof ApiRequestError
+          ? e.userMessage
+          : "Unable to load the dashboard.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const active = people.filter((p) => p.status === "assigned").length;
+  const blocked = "—";
+  const ready = people.filter((p) => p.status === "ready").length;
+  const unassigned = people.filter(
+    (p) => p.availability_status === "available" && p.status !== "inactive",
+  ).length;
+  const readiness = people.length
+    ? Math.round((ready / people.length) * 100)
+    : 0;
+  const onboarding = people.length
+    ? Math.round(
+        (people.filter((p) => ["ready", "assigned"].includes(p.status)).length /
+          people.length) *
+          100,
+      )
+    : 0;
+  if (error) return <ErrorState type="error" message={error} onRetry={load} />;
+  return (
+    <div className="fade-in">
+      <div className={styles.header}>
+        <div>
+          <h2>
+            Good{" "}
+            {new Date().getHours() < 12
+              ? "morning"
+              : new Date().getHours() < 17
+                ? "afternoon"
+                : "evening"}
+            {user ? `, ${user.email.split("@")[0]}` : ""}
+          </h2>
+          <p>Executive workforce readiness and delivery control.</p>
+        </div>
+        {user && <Badge kind="role" value={user.role} />}
+      </div>
+      {loading ? (
+        <div className={styles.kpis}>
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <Skeleton width="100%" height="70px" />
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className={styles.kpis}>
+            <Kpi
+              icon={<BriefcaseBusiness />}
+              label="Active"
+              value={active}
+              note="Professionals assigned"
+            />
+            <Kpi
+              icon={<AlertOctagon />}
+              label="Blocked"
+              value={blocked}
+              note="Onboarding blockers"
+              tone="warning"
+            />
+            <Kpi
+              icon={<UserMinus />}
+              label="Unassigned"
+              value={unassigned}
+              note="No current allocation"
+            />
+            <Kpi
+              icon={<CircleCheckBig />}
+              label="Ready"
+              value={ready}
+              note="Ready for assignment"
+              tone="success"
+            />
+          </div>
+          <div className={styles.insights}>
+            <Ring label="Workforce readiness" value={readiness} />
+            <Ring label="Capacity utilization" value={utilization} />
+            <Ring label="Onboarding completion" value={onboarding} />
+            <Card>
+              <div className={styles.compact}>
+                <Users />
+                <div>
+                  <strong>{people.length}</strong>
+                  <span>Professionals</span>
+                </div>
+              </div>
+              <div className={styles.compact}>
+                <BriefcaseBusiness />
+                <div>
+                  <strong>
+                    {projects.filter((p) => p.status === "active").length}
+                  </strong>
+                  <span>Active projects</span>
+                </div>
+              </div>
+              <div className={styles.compact}>
+                <Gauge />
+                <div>
+                  <strong>{active}</strong>
+                  <span>Assigned professionals</span>
+                </div>
+              </div>
+            </Card>
+          </div>
+          {people.length === 0 ? (
+            <Card>
+              <p className={styles.empty}>
+                No workforce data is available yet. Dashboard metrics will
+                update from the API when the demonstration cohort is seeded.
+              </p>
+            </Card>
+          ) : (
+            <section className={styles.section}>
+              <h3>Workforce readiness</h3>
+              <Card padded={false}>
+                {people.slice(0, 10).map((p, i) => (
+                  <div
+                    className={styles.person}
+                    key={p.id}
+                    style={{
+                      borderBottom:
+                        i < Math.min(people.length, 10) - 1
+                          ? "1px solid var(--color-border)"
+                          : "none",
+                    }}
+                  >
+                    <span className={styles.avatar}>
+                      {p.first_name[0]}
+                      {p.last_name[0]}
+                    </span>
+                    <div>
+                      <strong>
+                        {p.first_name} {p.last_name}
+                      </strong>
+                      <small>{p.email}</small>
+                    </div>
+                    <Badge kind="professional-status" value={p.status} />
+                    <span className={styles.availability}>
+                      {p.availability_status.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                ))}
+              </Card>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
-function Kpi({icon,label,value,note,tone}:{icon:React.ReactNode;label:string;value:number|string;note:string;tone?:string}){return <Card><div className={`${styles.kpiIcon} ${tone?styles[tone]:''}`}>{icon}</div><div className={styles.kpiValue}>{value}</div><strong>{label}</strong><p>{note}</p></Card>}
-function Ring({label,value}:{label:string;value:number}){const safe=Math.max(0,Math.min(value,100));return <Card><div className={styles.ring} style={{background:`conic-gradient(var(--color-brand-accent) ${safe*3.6}deg,var(--color-surface-secondary) 0)`}}><span>{safe}%</span></div><strong>{label}</strong><p>Derived from current DWOP records</p></Card>}
+function Kpi({
+  icon,
+  label,
+  value,
+  note,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  note: string;
+  tone?: string;
+}) {
+  return (
+    <Card>
+      <div className={`${styles.kpiIcon} ${tone ? styles[tone] : ""}`}>
+        {icon}
+      </div>
+      <div className={styles.kpiValue}>{value}</div>
+      <strong>{label}</strong>
+      <p>{note}</p>
+    </Card>
+  );
+}
+function Ring({ label, value }: { label: string; value: number }) {
+  const safe = Math.max(0, Math.min(value, 100));
+  return (
+    <Card>
+      <div
+        className={styles.ring}
+        style={{
+          background: `conic-gradient(var(--color-brand-accent) ${safe * 3.6}deg,var(--color-surface-secondary) 0)`,
+        }}
+      >
+        <span>{safe}%</span>
+      </div>
+      <strong>{label}</strong>
+      <p>Derived from current DWOP records</p>
+    </Card>
+  );
+}

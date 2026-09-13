@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import React, { useEffect, useRef, useCallback } from 'react';
-import { X } from 'lucide-react';
-import styles from './ui.module.css';
+import React, { useEffect, useId, useRef } from "react";
+import { X } from "lucide-react";
+import styles from "./ui.module.css";
 
 interface ModalProps {
   isOpen: boolean;
@@ -12,39 +12,83 @@ interface ModalProps {
   maxWidth?: string;
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = '560px' }: ModalProps) {
+const focusableSelector = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  maxWidth = "560px",
+}: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-
-  const handleEscape = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    },
-    [onClose],
-  );
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+  onCloseRef.current = onClose;
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+    if (!isOpen || !contentRef.current) return;
+
+    const dialog = contentRef.current;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+
+    const focusFirstControl = () => {
+      const firstControl = dialog.querySelector<HTMLElement>(focusableSelector);
+      (firstControl ?? dialog).focus();
     };
-  }, [isOpen, handleEscape]);
 
-  // Focus the content on open
-  useEffect(() => {
-    if (isOpen && contentRef.current) {
-      contentRef.current.focus();
-    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const controls = Array.from(
+        dialog.querySelectorAll<HTMLElement>(focusableSelector),
+      );
+      if (controls.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.style.overflow = "hidden";
+    focusFirstControl();
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "";
+      previouslyFocusedRef.current?.focus();
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === overlayRef.current) onClose();
+  const handleOverlayClick = (event: React.MouseEvent) => {
+    if (event.target === overlayRef.current) onClose();
   };
 
   return (
@@ -54,7 +98,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '560px' }: 
       onClick={handleOverlayClick}
       aria-modal="true"
       role="dialog"
-      aria-label={title}
+      aria-labelledby={titleId}
     >
       <div
         ref={contentRef}
@@ -63,7 +107,9 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '560px' }: 
         tabIndex={-1}
       >
         <div className={styles.modalHeader}>
-          <h2 className={styles.modalTitle}>{title}</h2>
+          <h2 id={titleId} className={styles.modalTitle}>
+            {title}
+          </h2>
           <button
             className={styles.modalClose}
             onClick={onClose}
@@ -73,9 +119,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = '560px' }: 
             <X size={18} />
           </button>
         </div>
-        <div className={styles.modalBody}>
-          {children}
-        </div>
+        <div className={styles.modalBody}>{children}</div>
       </div>
     </div>
   );

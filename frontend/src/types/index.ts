@@ -19,7 +19,7 @@ export interface TokenResponse {
   expires_in: number;
   user_id: string;
   tenant_id: string;
-  role: 'ADMIN' | 'MANAGER' | 'MEMBER';
+  role: "ADMIN" | "MANAGER" | "MEMBER";
   email: string;
 }
 
@@ -27,39 +27,33 @@ export interface UserRead {
   id: string;
   tenant_id: string;
   email: string;
-  role: 'ADMIN' | 'MANAGER' | 'MEMBER';
+  role: "ADMIN" | "MANAGER" | "MEMBER";
   is_active: boolean;
   created_at: string;
 }
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'MEMBER';
+export type UserRole = "ADMIN" | "MANAGER" | "MEMBER";
 
 // ============================================================
 // People / Talent
 // ============================================================
 
 export type ProfessionalStatus =
-  | 'intake'
-  | 'onboarding'
-  | 'ready'
-  | 'assigned'
-  | 'offboarding'
-  | 'inactive';
+  | "intake"
+  | "onboarding"
+  | "ready"
+  | "assigned"
+  | "offboarding"
+  | "inactive";
 
 export type AvailabilityStatus =
-  | 'available'
-  | 'partially_booked'
-  | 'fully_booked';
+  | "available"
+  | "partially_booked"
+  | "fully_booked";
 
-export type EngagementType =
-  | 'employee'
-  | 'contractor'
-  | 'working_student';
+export type EngagementType = "employee" | "contractor" | "working_student";
 
-export type ContractStatus =
-  | 'active'
-  | 'expired'
-  | 'terminated';
+export type ContractStatus = "active" | "expired" | "terminated";
 
 export interface EngagementRead {
   id: string;
@@ -154,7 +148,7 @@ export interface OnboardingItemRead {
   run_id: string;
   title: string;
   owner_user_id: string | null;
-  status: 'pending' | 'blocked' | 'completed';
+  status: "pending" | "blocked" | "completed";
   due_date: string | null;
   blocker_reason: string | null;
   evidence_ref: string | null;
@@ -184,9 +178,15 @@ export interface OnboardingRunRead {
 // Projects & Assignments
 // ============================================================
 
-export type ProjectStatus = 'active' | 'completed' | 'on_hold' | 'ACTIVE';
+export type ProjectStatus = "active" | "completed" | "on_hold";
 
-export type ClientStatus = 'active' | 'inactive' | 'lead';
+export interface CapacityOverviewRead {
+  average_utilization_pct?: number;
+  total_capacity_allocated_pct?: number;
+  available_headcount?: number;
+}
+
+export type ClientStatus = "active" | "inactive" | "lead";
 
 export interface ClientRead {
   id: string;
@@ -229,7 +229,12 @@ export interface ProjectUpdate {
   target_end_date?: string | null;
 }
 
-export type AssignmentStatus = 'planned' | 'active' | 'completed' | 'reassigned' | 'cancelled';
+export type AssignmentStatus =
+  | "planned"
+  | "active"
+  | "completed"
+  | "reassigned"
+  | "cancelled";
 
 export interface AssignmentCreate {
   professional_id: string;
