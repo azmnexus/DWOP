@@ -14,6 +14,8 @@ const pageTitles: Record<string, string> = {
   '/workforce': 'Workforce Directory',
   '/onboarding': 'Onboarding',
   '/assignments': 'Assignments',
+  '/clients': 'Client View',
+  '/work': 'Work Management',
   '/access': 'Access Management',
   '/activity': 'Activity Log',
   '/settings': 'Settings',
@@ -59,6 +61,10 @@ export default function AuthenticatedLayout({
   const baseRoute = '/' + (pathname.split('/')[1] || '');
   const pageTitle = pathname.includes('/workforce/')
     ? 'Professional Profile'
+    : pathname.includes('/clients/')
+      ? 'Client Detail'
+      : pathname.includes('/assignments/')
+        ? 'Project Workspace'
     : pageTitles[baseRoute] || 'DWOP Platform';
 
   return (

@@ -9,6 +9,8 @@ import {
   Users,
   ClipboardList,
   FolderKanban,
+  Building2,
+  ListChecks,
   Shield,
   Activity,
   Settings,
@@ -32,8 +34,10 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Overview', href: '/', icon: <LayoutDashboard size={18} />, enabled: true },
   { label: 'Workforce', href: '/workforce', icon: <Users size={18} />, enabled: true },
-  { label: 'Onboarding', href: '/onboarding', icon: <ClipboardList size={18} />, enabled: false },
-  { label: 'Assignments', href: '/assignments', icon: <FolderKanban size={18} />, enabled: false },
+  { label: 'Onboarding', href: '/onboarding', icon: <ClipboardList size={18} />, enabled: true },
+  { label: 'Assignments', href: '/assignments', icon: <FolderKanban size={18} />, enabled: true },
+  { label: 'Clients', href: '/clients', icon: <Building2 size={18} />, enabled: true },
+  { label: 'Work Management', href: '/work', icon: <ListChecks size={18} />, enabled: true },
   { label: 'Access', href: '/access', icon: <Shield size={18} />, enabled: false },
   { label: 'Activity', href: '/activity', icon: <Activity size={18} />, enabled: false },
   { label: 'Settings', href: '/settings', icon: <Settings size={18} />, enabled: false },
@@ -46,7 +50,10 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
   // Close drawer on route change
   useEffect(() => {
     onClose();
-  }, [pathname, onClose]);
+  // The parent callback identity may change after opening; only route changes
+  // should trigger this effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   // Lock body scroll when open
   useEffect(() => {
@@ -133,6 +140,7 @@ export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {
                   href={item.href}
                   className={`${styles.navItem} ${isActive ? styles.navItemActive : ''}`}
                   aria-current={isActive ? 'page' : undefined}
+                  onClick={onClose}
                 >
                   <span className={styles.navItemIcon}>{item.icon}</span>
                   {item.label}
