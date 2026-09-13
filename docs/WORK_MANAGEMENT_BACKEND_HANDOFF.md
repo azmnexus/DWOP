@@ -1,8 +1,24 @@
-# DWOP Work Management Backend Implementation Contract
+# DWOP Work Management Backend Implementation Proposal
 
 ## Purpose
 
 This specification converts the interactive Assignment Board prototype into a persistent, tenant-safe work-management service. It keeps DWOP centered on workforce readiness, capacity, governed assignment, and auditable delivery rather than cloning Trello.
+
+This document is a technical proposal for team review. It does not authorize backend implementation or replace the existing ADMIN / MANAGER / MEMBER RBAC contract.
+
+## Decision status
+
+| Decision | Status | Approval owner |
+|---|---|---|
+| One board per project | Proposed | Product and engineering |
+| Board-specific roles | Proposed | Product and security |
+| Six default workflow columns | Proposed | Product and delivery |
+| Work-in-progress limits | Proposed | Product and delivery |
+| Ticket comments and checklists | Proposed | Product |
+| Ticket transition permissions | Proposed | Product and security |
+| Mapping board roles to platform RBAC | Open | Security and engineering |
+
+Implementation should begin only after these decisions are approved and recorded in the relevant delivery tickets.
 
 ## Domain model
 
