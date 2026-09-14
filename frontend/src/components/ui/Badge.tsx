@@ -1,15 +1,17 @@
-import React from 'react';
-import styles from './ui.module.css';
-import type { ProfessionalStatus, UserRole } from '@/types';
+import React from "react";
+import styles from "./ui.module.css";
+import type { ProfessionalStatus, ProjectStatus, UserRole } from "@/types";
 
-interface BadgeProps {
-  status?: ProfessionalStatus;
-  role?: UserRole;
+type BadgeProps = {
   label?: string;
   className?: string;
-}
+} & (
+  | { kind: "professional-status"; value: ProfessionalStatus }
+  | { kind: "project-status"; value: ProjectStatus }
+  | { kind: "role"; value: UserRole }
+);
 
-const statusClassMap: Record<string, string> = {
+const statusClassMap: Record<ProfessionalStatus, string> = {
   intake: styles.badgeIntake,
   onboarding: styles.badgeOnboarding,
   ready: styles.badgeReady,
@@ -18,39 +20,51 @@ const statusClassMap: Record<string, string> = {
   inactive: styles.badgeInactive,
 };
 
-const roleClassMap: Record<string, string> = {
+const roleClassMap: Record<UserRole, string> = {
   ADMIN: styles.badgeAdmin,
   MANAGER: styles.badgeManager,
   MEMBER: styles.badgeMember,
 };
 
-const statusLabelMap: Record<string, string> = {
-  intake: 'Intake',
-  onboarding: 'Onboarding',
-  ready: 'Ready',
-  assigned: 'Assigned',
-  offboarding: 'Offboarding',
-  inactive: 'Inactive',
-  available: 'Available',
-  partially_booked: 'Partially Booked',
-  fully_booked: 'Fully Booked',
+const projectStatusClassMap: Record<ProjectStatus, string> = {
+  active: styles.badgeReady,
+  completed: styles.badgeAssigned,
+  on_hold: styles.badgeOnboarding,
 };
 
-export function Badge({ status, role, label, className = '' }: BadgeProps) {
-  let badgeClass = '';
-  let displayLabel = label || '';
+const statusLabelMap: Record<ProfessionalStatus, string> = {
+  intake: "Intake",
+  onboarding: "Onboarding",
+  ready: "Ready",
+  assigned: "Assigned",
+  offboarding: "Offboarding",
+  inactive: "Inactive",
+};
 
-  if (status) {
-    badgeClass = statusClassMap[status] || styles.badgeInactive;
-    displayLabel = label || statusLabelMap[status] || status;
-  } else if (role) {
-    badgeClass = roleClassMap[role] || styles.badgeMember;
-    displayLabel = label || role;
-  }
+const projectStatusLabelMap: Record<ProjectStatus, string> = {
+  active: "Active",
+  completed: "Completed",
+  on_hold: "On Hold",
+};
+
+export function Badge({ kind, value, label, className = "" }: BadgeProps) {
+  const badgeClass =
+    kind === "professional-status"
+      ? statusClassMap[value]
+      : kind === "project-status"
+        ? projectStatusClassMap[value]
+        : roleClassMap[value];
+  const displayLabel =
+    label ||
+    (kind === "professional-status"
+      ? statusLabelMap[value]
+      : kind === "project-status"
+        ? projectStatusLabelMap[value]
+        : value);
 
   return (
     <span className={`${styles.badge} ${badgeClass} ${className}`}>
-      {status && <span className={styles.badgeDot} />}
+      {kind !== "role" && <span className={styles.badgeDot} />}
       {displayLabel}
     </span>
   );

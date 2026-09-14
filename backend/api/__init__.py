@@ -1,0 +1,20 @@
+from fastapi import APIRouter
+from backend.api import auth, tenants, users, departments, teams, clients, projects, professionals, engagements, assignments, onboarding, access_requests, audit, document_acknowledgements, notifications
+
+api_router = APIRouter(prefix="/api/v1")
+api_router.include_router(auth.router)
+api_router.include_router(tenants.router)
+api_router.include_router(users.router)
+api_router.include_router(departments.router)
+api_router.include_router(teams.router)
+api_router.include_router(clients.router)
+api_router.include_router(projects.router)
+api_router.include_router(professionals.router)
+api_router.include_router(engagements.router)
+api_router.include_router(assignments.router)
+api_router.include_router(onboarding.router)
+api_router.include_router(access_requests.router)
+api_router.include_router(access_requests.integration_router)
+api_router.include_router(audit.router)
+api_router.include_router(document_acknowledgements.router)
+api_router.include_router(notifications.router)

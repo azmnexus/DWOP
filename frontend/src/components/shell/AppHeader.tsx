@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Menu } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { Badge } from '@/components/ui/Badge';
-import styles from './shell.module.css';
+import React from "react";
+import { Menu } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Badge } from "@/components/ui/Badge";
+import styles from "./shell.module.css";
 
 interface AppHeaderProps {
   title: string;
@@ -35,8 +35,10 @@ export function AppHeader({ title, onMenuToggle }: AppHeaderProps) {
             <div className={styles.headerUserAvatar} aria-hidden="true">
               {getInitials(user.email)}
             </div>
-            <span className={styles.headerUserName}>{user.email.split('@')[0]}</span>
-            <Badge role={user.role} />
+            <span className={styles.headerUserName}>
+              {user.email.split("@")[0]}
+            </span>
+            <Badge kind="role" value={user.role} />
           </div>
         )}
       </div>

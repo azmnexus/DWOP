@@ -1,19 +1,20 @@
-import React from 'react';
-import { Inter } from 'next/font/google';
-import { AuthProvider } from '@/contexts/AuthContext';
-import './globals.css';
+import React from "react";
+import { Inter } from "next/font/google";
+import { AuthProvider } from "@/contexts/AuthContext";
+import "./globals.css";
 
 const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
 });
 
 export const metadata = {
-  title: 'AZM Nexus — Digital Workspace Operations',
-  description: 'AZM Nexus DWOP Platform — Multi-tenant workforce management, onboarding, and operations.',
+  title: "AZM Nexus — Digital Workspace Operations",
+  description:
+    "AZM Nexus DWOP Platform — Multi-tenant workforce management, onboarding, and operations.",
   icons: {
-    icon: '/logo.png',
+    icon: "/logo.png",
   },
 };
 
@@ -25,9 +26,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

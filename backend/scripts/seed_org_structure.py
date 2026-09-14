@@ -1,5 +1,6 @@
 """Seed script for DWOP-003, DWOP-004, DWOP-005 & DWOP-006:
 - Root Tenant: AZM Nexus (with branding jsonb)
+- Default GitHub sandbox integration for access lifecycle demos
 - Admin User: admin@azm-nexus.com (role: ADMIN, password: Admin123!)
 - Standard Member: member@azm-nexus.com (role: MEMBER, password: Member123!)
 - Manager User: atanda.david@azm-nexus.com (role: MANAGER, password: LeadAtanda2026!)
@@ -18,8 +19,8 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from datetime import date, timedelta
+from sqlalchemy.orm import Session
 from app.core.database import engine, SessionLocal, Base
-from app.core.security import get_password_hash
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 from app.models.organization import Department, Team
@@ -38,15 +39,11 @@ from app.models.onboarding import (
     OnboardingRun,
     OnboardingItem,
 )
-from app.models.access import (
-    Integration,
-    IntegrationProvider,
-    IntegrationAuthType,
-)
+from app.models.access import Integration, IntegrationAuthType, IntegrationProvider
 
 
 def seed_default_github_integration(
-    db, tenant: Tenant
+    db: Session, tenant: Tenant
 ) -> tuple[Integration, bool]:
     """Ensure the tenant has one network-free GitHub demo integration."""
     integration = (
@@ -76,6 +73,7 @@ def seed_default_github_integration(
 
 
 def seed():
+    from app.core.security import get_password_hash
     print("[1/8] Ensuring database tables are created...")
     Base.metadata.create_all(bind=engine)
     print("      Tables verified successfully.")
@@ -145,13 +143,29 @@ def seed():
             member_user.hashed_password = member_hashed
             member_user.role = UserRole.MEMBER
 
-        # 3. Manager user
-        manager_user = db.query(User).filter(User.email == "atanda.david@azm-nexus.com").first()
-        manager_hashed = get_password_hash("LeadAtanda2026!")
+        # 3. Atanda David - ADMIN (Systems Architect / Super Admin per Document Section 2)
+        atanda_user = db.query(User).filter(User.email == "atanda.david@azm-nexus.com").first()
+        atanda_hashed = get_password_hash("LeadAtanda2026!")
+        if not atanda_user:
+            atanda_user = User(
+                tenant_id=tenant.id,
+                email="atanda.david@azm-nexus.com",
+                hashed_password=atanda_hashed,
+                role=UserRole.ADMIN,
+                is_active=True,
+            )
+            db.add(atanda_user)
+        else:
+            atanda_user.hashed_password = atanda_hashed
+            atanda_user.role = UserRole.ADMIN
+
+        # 4. Manager user (for demo: retains MANAGER role tier)
+        manager_user = db.query(User).filter(User.email == "manager@azm-nexus.com").first()
+        manager_hashed = get_password_hash("Manager123!")
         if not manager_user:
             manager_user = User(
                 tenant_id=tenant.id,
-                email="atanda.david@azm-nexus.com",
+                email="manager@azm-nexus.com",
                 hashed_password=manager_hashed,
                 role=UserRole.MANAGER,
                 is_active=True,
@@ -164,13 +178,15 @@ def seed():
         db.commit()
         db.refresh(admin_user)
         db.refresh(member_user)
+        db.refresh(atanda_user)
         db.refresh(manager_user)
 
         print(f"      Admin:   {admin_user.email} (Role: {admin_user.role.value})")
-        print(f"      Member:  {member_user.email} (Role: {member_user.role.value})")
+        print(f"      Atanda:  {atanda_user.email} (Role: {atanda_user.role.value})")
         print(f"      Manager: {manager_user.email} (Role: {manager_user.role.value})")
+        print(f"      Member:  {member_user.email} (Role: {member_user.role.value})")
 
-        print("[4/7] Seeding Departments and Teams...")
+        print("[5/8] Seeding Departments and Teams...")
         exec_dept = (
             db.query(Department)
             .filter(Department.tenant_id == tenant.id, Department.name == "Executive Leadership")
@@ -195,7 +211,7 @@ def seed():
             eng_dept = Department(
                 tenant_id=tenant.id,
                 name="Core Platform & Engineering",
-                manager_user_id=manager_user.id,
+                manager_user_id=atanda_user.id,
                 parent_department_id=exec_dept.id,
             )
             db.add(eng_dept)
@@ -212,7 +228,7 @@ def seed():
                 tenant_id=tenant.id,
                 department_id=eng_dept.id,
                 name="Backend & Cloud Architecture",
-                team_lead_id=manager_user.id,
+                team_lead_id=atanda_user.id,
             )
             db.add(backend_team)
 
@@ -234,7 +250,7 @@ def seed():
         print(f"      Departments: {exec_dept.name}, {eng_dept.name}")
         print("      Teams: Backend & Cloud Architecture, Frontend & Workforce Experience")
 
-        print("[5/7] Seeding Client and Project...")
+        print("[6/8] Seeding Client and Project...")
         client = (
             db.query(Client)
             .filter(Client.tenant_id == tenant.id, Client.name == "Apex Global Banking Group")
@@ -273,7 +289,7 @@ def seed():
         print(f"      Client: {client.name} (ID: {client.id})")
         print(f"      Project: {project.name} [{project.code}] (ID: {project.id})")
 
-        print("[6/7] Seeding Sample Professionals (Intake Status)...")
+        print("[7/8] Seeding Sample Professionals (Intake Status)...")
         sample_professionals = [
             {
                 "first_name": "Jane",
@@ -349,7 +365,7 @@ def seed():
 
         db.commit()
 
-        print("[7/7] Seeding Walid's Mock Onboarding Template & Active Run for Jane Doe...")
+        print("[8/8] Seeding Walid's Mock Onboarding Template & Active Run for Jane Doe...")
         template_title = "Standard Software Engineer Onboarding v2.1"
         template = (
             db.query(OnboardingTemplate)
@@ -435,7 +451,7 @@ def seed():
                     tenant_id=tenant.id,
                     professional_id=jane_prof.id,
                     template_id=template.id,
-                    assigned_manager_id=manager_user.id,
+                    assigned_manager_id=atanda_user.id,
                     status="in_progress",
                     progress_pct=0,
                 )
@@ -452,7 +468,7 @@ def seed():
                     run_task = OnboardingItem(
                         run_id=active_run.id,
                         title=t_item.title,
-                        owner_user_id=manager_user.id,
+                        owner_user_id=atanda_user.id,
                         status="pending",
                         due_date=due,
                     )
