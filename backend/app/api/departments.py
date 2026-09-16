@@ -5,12 +5,12 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_active_user, require_admin
 from app.models.user import User
-from app.models.organization import Department
 from app.schemas.organization import (
     DepartmentCreate,
     DepartmentUpdate,
     DepartmentRead,
 )
+from app.services.organization import OrganizationService
 
 router = APIRouter(prefix="/departments", tags=["Departments"])
 
@@ -23,14 +23,11 @@ def list_departments(
     db: Session = Depends(get_db),
 ):
     """List all departments scoped to the authenticated user's tenant (Accessible by all members)."""
-    departments = (
-        db.query(Department)
-        .filter(Department.tenant_id == current_user.tenant_id)
-        .offset(skip)
-        .limit(limit)
-        .all()
+    return OrganizationService(db).list_departments(
+        tenant_id=current_user.tenant_id,
+        skip=skip,
+        limit=limit,
     )
-    return departments
 
 
 @router.post("/", response_model=DepartmentRead, status_code=status.HTTP_201_CREATED)
@@ -40,16 +37,10 @@ def create_department(
     db: Session = Depends(get_db),
 ):
     """Create a new department (Requires ADMIN role)."""
-    dept = Department(
+    return OrganizationService(db).create_department(
         tenant_id=admin_user.tenant_id,
-        name=payload.name,
-        manager_user_id=payload.manager_user_id,
-        parent_department_id=payload.parent_department_id,
+        payload=payload,
     )
-    db.add(dept)
-    db.commit()
-    db.refresh(dept)
-    return dept
 
 
 @router.get("/{department_id}", response_model=DepartmentRead)
@@ -59,10 +50,9 @@ def get_department(
     db: Session = Depends(get_db),
 ):
     """Retrieve details for a department within user's tenant (Accessible by all members)."""
-    dept = (
-        db.query(Department)
-        .filter(Department.id == department_id, Department.tenant_id == current_user.tenant_id)
-        .first()
+    dept = OrganizationService(db).get_department(
+        tenant_id=current_user.tenant_id,
+        department_id=department_id,
     )
     if not dept:
         raise HTTPException(
@@ -80,22 +70,11 @@ def update_department(
     db: Session = Depends(get_db),
 ):
     """Update department details (Requires ADMIN role)."""
-    dept = (
-        db.query(Department)
-        .filter(Department.id == department_id, Department.tenant_id == admin_user.tenant_id)
-        .first()
+    return OrganizationService(db).update_department(
+        tenant_id=admin_user.tenant_id,
+        department_id=department_id,
+        payload=payload,
     )
-    if not dept:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Department '{department_id}' not found in current tenant.",
-        )
-    update_data = payload.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(dept, key, value)
-    db.commit()
-    db.refresh(dept)
-    return dept
 
 
 @router.delete("/{department_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -105,16 +84,9 @@ def delete_department(
     db: Session = Depends(get_db),
 ):
     """Delete a department (Requires ADMIN role)."""
-    dept = (
-        db.query(Department)
-        .filter(Department.id == department_id, Department.tenant_id == admin_user.tenant_id)
-        .first()
+    OrganizationService(db).delete_department(
+        tenant_id=admin_user.tenant_id,
+        department_id=department_id,
     )
-    if not dept:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Department '{department_id}' not found in current tenant.",
-        )
-    db.delete(dept)
-    db.commit()
     return None
+

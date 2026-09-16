@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_active_user, require_admin
 from app.models.user import User
-from app.models.organization import Department, Team
 from app.schemas.organization import TeamCreate, TeamUpdate, TeamRead
+from app.services.organization import OrganizationService
 
 router = APIRouter(prefix="/teams", tags=["Teams"])
 
@@ -20,10 +20,12 @@ def list_teams(
     db: Session = Depends(get_db),
 ):
     """List teams scoped to the authenticated user's tenant (Accessible by all members)."""
-    query = db.query(Team).filter(Team.tenant_id == current_user.tenant_id)
-    if department_id:
-        query = query.filter(Team.department_id == department_id)
-    return query.offset(skip).limit(limit).all()
+    return OrganizationService(db).list_teams(
+        tenant_id=current_user.tenant_id,
+        department_id=department_id,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.post("/", response_model=TeamRead, status_code=status.HTTP_201_CREATED)
@@ -33,27 +35,10 @@ def create_team(
     db: Session = Depends(get_db),
 ):
     """Create a new team (Requires ADMIN role)."""
-    dept = (
-        db.query(Department)
-        .filter(Department.id == payload.department_id, Department.tenant_id == admin_user.tenant_id)
-        .first()
-    )
-    if not dept:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Department '{payload.department_id}' does not exist in current tenant.",
-        )
-
-    team = Team(
+    return OrganizationService(db).create_team(
         tenant_id=admin_user.tenant_id,
-        department_id=payload.department_id,
-        name=payload.name,
-        team_lead_id=payload.team_lead_id,
+        payload=payload,
     )
-    db.add(team)
-    db.commit()
-    db.refresh(team)
-    return team
 
 
 @router.get("/{team_id}", response_model=TeamRead)
@@ -63,10 +48,9 @@ def get_team(
     db: Session = Depends(get_db),
 ):
     """Retrieve details for a team in current tenant (Accessible by all members)."""
-    team = (
-        db.query(Team)
-        .filter(Team.id == team_id, Team.tenant_id == current_user.tenant_id)
-        .first()
+    team = OrganizationService(db).get_team(
+        tenant_id=current_user.tenant_id,
+        team_id=team_id,
     )
     if not team:
         raise HTTPException(
@@ -84,22 +68,11 @@ def update_team(
     db: Session = Depends(get_db),
 ):
     """Update team details (Requires ADMIN role)."""
-    team = (
-        db.query(Team)
-        .filter(Team.id == team_id, Team.tenant_id == admin_user.tenant_id)
-        .first()
+    return OrganizationService(db).update_team(
+        tenant_id=admin_user.tenant_id,
+        team_id=team_id,
+        payload=payload,
     )
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Team '{team_id}' not found in current tenant.",
-        )
-    update_data = payload.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(team, key, value)
-    db.commit()
-    db.refresh(team)
-    return team
 
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -109,16 +82,9 @@ def delete_team(
     db: Session = Depends(get_db),
 ):
     """Delete a team (Requires ADMIN role)."""
-    team = (
-        db.query(Team)
-        .filter(Team.id == team_id, Team.tenant_id == admin_user.tenant_id)
-        .first()
+    OrganizationService(db).delete_team(
+        tenant_id=admin_user.tenant_id,
+        team_id=team_id,
     )
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Team '{team_id}' not found in current tenant.",
-        )
-    db.delete(team)
-    db.commit()
     return None
+
