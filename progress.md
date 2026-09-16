@@ -165,6 +165,26 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
   - Multi-card modular layout: Identity & Contact, Lifecycle & Availability, Skills & Expertise, and Contract Engagement Terms.
   - Supplementary onboarding runs check integration: Wired to `GET /api/v1/onboarding/runs?professional_id={id}`.
 
+### ✅ Task P-01: Service Layer Pattern Extraction (Walid)
+- **Extraction of `PeopleService` (`backend/app/services/people.py`)**:
+  - Encapsulates talent listing, single intake/registration, profile query, profile update, and atomic batch intake with in-transaction audit emissions (`professional.created`, `professional.bulk_imported`).
+  - Strict tenant scoping moved into the service layer for all queries and mutations.
+  - Thinned `backend/app/api/people.py` into a declarative router delegating all domain logic to `PeopleService(db)`.
+- **Extraction of `OnboardingService` (`backend/app/services/onboarding.py`)**:
+  - Encapsulates onboarding template creation and listing, run instantiation with dynamic task generation and deadline calculations, run inspection with progress recalculation, and checklist item updates.
+  - Preserves blocker-reason validation (`detail="Blocker reason is required when marking an item as blocked."`) and automatic run progress recalculation.
+  - In-transaction audit emissions (`onboarding_run.created`, `onboarding_item.status_changed`) preserved within the active DB transaction.
+  - Thinned `backend/app/api/onboarding.py` into a declarative router delegating to `OnboardingService(db)`.
+- **Extraction of `OrganizationService` (`backend/app/services/organization.py`)**:
+  - Encapsulates multi-tenant department and team operations (CRUD, listings scoped by tenant and department).
+  - Implements circular dependency hierarchy prevention (`_validate_hierarchy`) that traverses the ancestor tree to prevent self-parenting and cyclic department hierarchies.
+  - Thinned `backend/app/api/departments.py` and `backend/app/api/teams.py` into declarative routers delegating to `OrganizationService(db)`.
+- **Packaging & Boundary Integrity**:
+  - Updated `backend/app/services/__init__.py` exporting `AuditService`, `AccessService`, `AssignmentService`, `PeopleService`, `OnboardingService`, and `OrganizationService`.
+  - Strict boundary maintained: Zero modifications to `backend/app/services/access.py`, `backend/app/api/access.py`, or `backend/app/integrations/` (Dotun's active P-03 zone).
+  - 100% external REST contract stability verified across all routes, HTTP methods, status codes, and response models.
+
+
 ---
 
 ## 4. API Endpoint Matrix & Frontend Consumption Status
