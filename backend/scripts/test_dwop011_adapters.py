@@ -5,6 +5,7 @@ Runs without a live API, database, GitHub token, or network connection.
 import asyncio
 import os
 import sys
+from types import SimpleNamespace
 from typing import Any, Dict
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -12,9 +13,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.integrations import (
     BaseProviderAdapter,
     GitHubMockAdapter,
+    InvalidAdapterConfigError,
+    ProviderAdapterFactory,
+    UnsupportedProviderError,
     get_provider_adapter,
     register_provider_adapter,
 )
+
+
 
 
 class AlternateMockAdapter(BaseProviderAdapter):
@@ -37,6 +43,53 @@ async def main() -> None:
     print("=" * 80)
     print("DWOP-011: PROVIDER ADAPTER FRAMEWORK VERIFICATION")
     print("=" * 80)
+
+    assert ProviderAdapterFactory.is_supported("github") is True
+    assert ProviderAdapterFactory.is_supported("unsupported") is False
+    print("[PASS] Factory reports supported and unsupported providers safely")
+
+    factory_adapter = ProviderAdapterFactory.create_adapter("github", tenant_a, {})
+    assert isinstance(factory_adapter, GitHubMockAdapter)
+    print("[PASS] Factory creates the GitHub sandbox adapter")
+
+    integration = SimpleNamespace(
+        provider="github",
+        tenant_id=tenant_a,
+        credentials_encrypted={},
+        connection_status="connected",
+    )
+    integration_adapter = ProviderAdapterFactory.create_from_integration(integration)
+    assert isinstance(integration_adapter, GitHubMockAdapter)
+    assert integration_adapter.tenant_id == tenant_a
+    print("[PASS] Factory binds an active Integration-like domain object to an adapter")
+
+    disconnected_integration = SimpleNamespace(
+        provider="github",
+        tenant_id=tenant_a,
+        credentials_encrypted={},
+        connection_status="disconnected",
+    )
+    try:
+        ProviderAdapterFactory.create_from_integration(disconnected_integration)
+    except InvalidAdapterConfigError:
+        pass
+    else:
+        raise AssertionError("Disconnected integrations must fail closed.")
+    print("[PASS] Disconnected Integration-like objects fail closed")
+
+    malformed_credentials_integration = SimpleNamespace(
+        provider="github",
+        tenant_id=tenant_a,
+        credentials_encrypted=[],
+        connection_status="connected",
+    )
+    try:
+        ProviderAdapterFactory.create_from_integration(malformed_credentials_integration)
+    except InvalidAdapterConfigError:
+        pass
+    else:
+        raise AssertionError("Malformed integration credentials must fail closed.")
+    print("[PASS] Malformed integration credentials fail closed")
 
     adapter = get_provider_adapter("github", tenant_a, {})
     assert isinstance(adapter, BaseProviderAdapter)
@@ -87,12 +140,17 @@ async def main() -> None:
     print("[PASS] Provider implementation can be swapped behind BaseProviderAdapter")
 
     try:
-        get_provider_adapter("unsupported", tenant_a, {})
-    except ValueError:
+        ProviderAdapterFactory.create_adapter("unsupported", tenant_a, {})
+    except UnsupportedProviderError as exc:
+        assert isinstance(exc, ValueError)
         pass
     else:
         raise AssertionError("Unsupported provider should fail closed.")
-    print("[PASS] Unknown providers fail closed")
+    print("[PASS] Unknown providers fail closed with a ValueError-compatible domain error")
+
+    compatibility_adapter = get_provider_adapter("github", tenant_a, {})
+    assert isinstance(compatibility_adapter, GitHubMockAdapter)
+    print("[PASS] Backwards-compatible get_provider_adapter still works")
 
     print("=" * 80)
     print("DWOP-011 VERIFICATION PASSED")
