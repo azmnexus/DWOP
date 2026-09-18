@@ -206,7 +206,7 @@ async def main() -> None:
         tenant_id=tenant.id, request_id=exception_request.id, approver=admin
     )
     with patch(
-        "app.services.access.get_provider_adapter",
+        "app.services.access.ProviderAdapterFactory.create_from_integration",
         return_value=RaisingAdapter(str(tenant.id), {}),
     ):
         exception_request, exception_result = await service.provision_request(
@@ -233,7 +233,7 @@ async def main() -> None:
         approver=admin,
     )
     with patch(
-        "app.services.access.get_provider_adapter",
+        "app.services.access.ProviderAdapterFactory.create_from_integration",
         side_effect=ValueError("unsupported provider with internal details"),
     ):
         factory_failure_request, factory_failure_result = await service.provision_request(

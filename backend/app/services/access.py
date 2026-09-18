@@ -330,8 +330,8 @@ class AccessService:
         if integration is None or professional is None:
             raise LookupError("Access request dependencies are missing.")
 
-        adapter = ProviderAdapterFactory.create_from_integration(integration)
         try:
+            adapter = ProviderAdapterFactory.create_from_integration(integration)
             revoked = await adapter.revoke_access(professional.email)
         except Exception:
             revoked = False
