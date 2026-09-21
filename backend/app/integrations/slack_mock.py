@@ -1,8 +1,8 @@
-"""Safe GitHub mock adapter for DWOP Sprint 0.
+"""Safe Slack sandbox mock adapter for DWOP Sprint 0.
 
-The adapter deliberately performs no network I/O. It models GitHub provisioning
-semantics in process memory so the access lifecycle can be exercised safely
-before a live provider integration is approved.
+The adapter performs no network I/O. It models Slack workspace channel / usergroup
+provisioning semantics in process memory so multi-provider adapter conformance
+can be exercised safely.
 """
 from __future__ import annotations
 
@@ -13,33 +13,23 @@ from app.integrations.base import BaseProviderAdapter
 from app.integrations.result import AdapterResult
 
 
-class GitHubMockAdapter(BaseProviderAdapter):
-    """Process-local GitHub sandbox implementation of ``BaseProviderAdapter``.
+class SlackMockAdapter(BaseProviderAdapter):
+    """Process-local Slack sandbox implementation of ``BaseProviderAdapter``.
 
-    Provider identity remains ``github`` so domain records continue to match the
-    DWOP ERD. ``mode=sandbox_mock`` distinguishes this implementation from a
-    future live GitHub adapter.
-
-    The class-level store is intentional for Sprint 0: factory calls may create a
-    fresh adapter object for each request, while mock provision/revoke operations
-    still need to observe the same tenant-scoped sandbox state.
+    Provider identity is ``slack``. Network I/O is strictly disabled.
+    State is tenant-scoped and kept in-memory for multi-provider testing.
     """
 
-    provider_name = "github"
+    provider_name = "slack"
     mode = "sandbox_mock"
 
-    _provisioned: ClassVar[Dict[Tuple[str, str], Dict[str, Any]]] = {}
+    _members: ClassVar[Dict[Tuple[str, str], Dict[str, Any]]] = {}
 
     def _key(self, user_email: str) -> Tuple[str, str]:
         return self.tenant_id, user_email.strip().lower()
 
     async def provision_access(self, user_email: str, role_or_scope: str) -> AdapterResult:
-        """Simulate granting GitHub access without contacting GitHub.
-
-        ``credentials["simulate_failure"]`` is a mock-only test control used to
-        exercise DWOP-012's failure/fallback path. It is never sent externally.
-        Repeated provisioning for the same tenant/email is idempotent.
-        """
+        """Simulate inviting a user to a Slack workspace channel/usergroup."""
         email = user_email.strip().lower()
         scope = role_or_scope.strip()
         if not email:
@@ -51,7 +41,8 @@ class GitHubMockAdapter(BaseProviderAdapter):
             "mode": self.mode,
             "tenant_id": self.tenant_id,
             "user_email": email,
-            "role_or_scope": scope,
+            "channel": scope,
+            "workspace": self.credentials.get("workspace", "azmnexus-workspace"),
         }
 
         if self.credentials.get("simulate_failure"):
@@ -60,12 +51,12 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 status="failed",
                 provider=self.provider_name,
                 external_reference=None,
-                error="Simulated GitHub provisioning failure.",
+                error="Simulated Slack provisioning failure.",
                 metadata=metadata,
             )
 
         key = self._key(email)
-        existing = self._provisioned.get(key)
+        existing = self._members.get(key)
         if existing is not None:
             return AdapterResult(
                 success=True,
@@ -76,18 +67,18 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 metadata=metadata,
             )
 
-        ext_ref = f"gh-mock-{uuid.uuid4()}"
+        ext_ref = f"slack-user-{uuid.uuid4().hex[:8]}"
         record = {
             "provider": self.provider_name,
             "mode": self.mode,
             "tenant_id": self.tenant_id,
             "user_email": email,
-            "role_or_scope": scope,
+            "channel": scope,
             "status": "provisioned",
             "external_reference": ext_ref,
             "error": None,
         }
-        self._provisioned[key] = record
+        self._members[key] = record
         return AdapterResult(
             success=True,
             status="provisioned",
@@ -98,7 +89,7 @@ class GitHubMockAdapter(BaseProviderAdapter):
         )
 
     async def revoke_access(self, user_email: str) -> AdapterResult:
-        """Simulate tenant-scoped GitHub access revocation."""
+        """Simulate deactivating a user from the Slack workspace."""
         email = user_email.strip().lower()
         if not email:
             raise ValueError("user_email cannot be empty.")
@@ -115,11 +106,11 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 status="failed",
                 provider=self.provider_name,
                 external_reference=None,
-                error="Simulated GitHub revocation failure.",
+                error="Simulated Slack revocation failure.",
                 metadata=metadata,
             )
 
-        popped = self._provisioned.pop(self._key(email), None)
+        popped = self._members.pop(self._key(email), None)
         if popped is not None:
             return AdapterResult(
                 success=True,
@@ -135,12 +126,12 @@ class GitHubMockAdapter(BaseProviderAdapter):
             status="failed",
             provider=self.provider_name,
             external_reference=None,
-            error="User has no provisioned GitHub access.",
+            error="User has no active Slack membership.",
             metadata=metadata,
         )
 
     async def get_status(self) -> AdapterResult:
-        """Return deterministic sandbox health information."""
+        """Return deterministic Slack sandbox health information."""
         return AdapterResult(
             success=True,
             status="healthy",
@@ -153,4 +144,3 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 "network_io": False,
             },
         )
-

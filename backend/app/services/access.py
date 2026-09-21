@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable
 
 from sqlalchemy.orm import Session
 
-from app.integrations import ProviderAdapterFactory
+from app.integrations import AdapterResult, ProviderAdapterFactory
 from app.models.access import (
     AccessRequest,
     AccessRequestStatus,
@@ -293,19 +293,50 @@ class AccessService:
             )
             self.db.commit()
             self.db.refresh(request)
-            return request, {
-                "provider": integration.provider.value,
-                "status": "failed",
-                "external_reference": None,
-                "error": "Provider provisioning failed.",
-            }
+            return request, AdapterResult(
+                success=False,
+                status="failed",
+                provider=integration.provider.value,
+                external_reference=None,
+                error="Provider provisioning failed.",
+            )
 
-        if result.get("status") == "provisioned":
+        is_provisioned = (
+            result.success
+            if isinstance(result, AdapterResult)
+            else (result.get("status") == "provisioned")
+        )
+        provider_name = (
+            result.provider
+            if isinstance(result, AdapterResult)
+            else result.get("provider", integration.provider.value)
+        )
+        ext_ref = (
+            result.external_reference
+            if isinstance(result, AdapterResult)
+            else result.get("external_reference")
+        )
+        error_msg = (
+            result.error
+            if isinstance(result, AdapterResult)
+            else result.get("error")
+        )
+        audit_meta = (
+            result.to_dict()
+            if isinstance(result, AdapterResult)
+            else dict(result)
+        )
+
+        if is_provisioned:
             self._transition(
                 request,
                 AccessRequestStatus.provisioned,
                 actor.id,
-                metadata={"provider": integration.provider.value},
+                metadata={
+                    "provider": provider_name,
+                    "external_reference": ext_ref,
+                    "adapter_result": audit_meta,
+                },
             )
             request.provisioned_at = datetime.now(timezone.utc)
         else:
@@ -314,8 +345,9 @@ class AccessService:
                 AccessRequestStatus.failed,
                 actor.id,
                 metadata={
-                    "provider": integration.provider.value,
-                    "error": result.get("error"),
+                    "provider": provider_name,
+                    "error": error_msg,
+                    "adapter_result": audit_meta,
                 },
             )
 
@@ -357,9 +389,20 @@ class AccessService:
 
         try:
             adapter = ProviderAdapterFactory.create_from_integration(integration)
-            revoked = await adapter.revoke_access(professional.email)
+            result = await adapter.revoke_access(professional.email)
+            revoked = (
+                result.success
+                if isinstance(result, AdapterResult)
+                else bool(result)
+            )
+            revocation_meta = (
+                result.to_dict()
+                if isinstance(result, AdapterResult)
+                else {"provider": integration.provider.value}
+            )
         except Exception:
             revoked = False
+            revocation_meta = {"provider": integration.provider.value}
 
         if not revoked:
             self._audit(
@@ -367,7 +410,7 @@ class AccessService:
                 actor_user_id=actor.id,
                 action="access_request.revocation_failed",
                 target_id=request.id,
-                metadata={"provider": integration.provider.value},
+                metadata=revocation_meta,
             )
             self.db.commit()
             raise AccessLifecycleError("Provider revocation failed; request remains provisioned.")
@@ -376,8 +419,9 @@ class AccessService:
             request,
             AccessRequestStatus.revoked,
             actor.id,
-            metadata={"provider": integration.provider.value},
+            metadata=revocation_meta,
         )
         self.db.commit()
         self.db.refresh(request)
         return request
+

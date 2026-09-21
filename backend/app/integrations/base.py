@@ -1,6 +1,8 @@
 """Provider Adapter Pattern package (Oladotun's domain)."""
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Any, Dict
+
+from app.integrations.result import AdapterResult
 
 
 class BaseProviderAdapter(ABC):
@@ -11,16 +13,17 @@ class BaseProviderAdapter(ABC):
         self.credentials = credentials
 
     @abstractmethod
-    async def provision_access(self, user_email: str, role_or_scope: str) -> Dict[str, Any]:
+    async def provision_access(self, user_email: str, role_or_scope: str) -> AdapterResult:
         """Provision access / invite user to provider organization."""
         pass
 
     @abstractmethod
-    async def revoke_access(self, user_email: str) -> bool:
+    async def revoke_access(self, user_email: str) -> AdapterResult:
         """Revoke user access from provider."""
         pass
 
     @abstractmethod
-    async def get_status(self) -> Dict[str, Any]:
+    async def get_status(self) -> AdapterResult:
         """Check provider connectivity & quota."""
         pass
+

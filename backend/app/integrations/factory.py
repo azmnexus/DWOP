@@ -8,6 +8,7 @@ from uuid import UUID
 
 from app.integrations.base import BaseProviderAdapter
 from app.integrations.github_mock import GitHubMockAdapter
+from app.integrations.slack_mock import SlackMockAdapter
 if TYPE_CHECKING:
     from app.models.access import Integration, IntegrationProvider
 
@@ -24,6 +25,15 @@ class UnsupportedProviderError(ProviderIntegrationError, ValueError):
 
 class InvalidAdapterConfigError(ProviderIntegrationError, ValueError):
     """Raised when provider adapter configuration is malformed or incomplete."""
+
+
+class ProviderConnectionTimeoutError(ProviderIntegrationError):
+    """Raised when communication with an external provider times out."""
+
+
+class ProviderAuthenticationError(ProviderIntegrationError):
+    """Raised when external provider credentials or tokens are rejected."""
+
 
 
 class ProviderAdapterFactory:
@@ -116,8 +126,10 @@ class ProviderAdapterFactory:
         return adapter
 
 
-# Sprint 0 deliberately resolves GitHub to the safe mock implementation.
+# Sprint 0 deliberately resolves GitHub and Slack to safe mock implementations.
 ProviderAdapterFactory.register_provider("github", GitHubMockAdapter)
+ProviderAdapterFactory.register_provider("slack", SlackMockAdapter)
+
 
 
 def register_provider_adapter(
