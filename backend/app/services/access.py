@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable
 
 from sqlalchemy.orm import Session
 
-from app.integrations import get_provider_adapter
+from app.integrations import ProviderAdapterFactory
 from app.models.access import (
     AccessRequest,
     AccessRequestStatus,
@@ -249,11 +249,7 @@ class AccessService:
         self.db.commit()
 
         try:
-            adapter = get_provider_adapter(
-                integration.provider.value,
-                str(tenant_id),
-                dict(integration.credentials_encrypted or {}),
-            )
+            adapter = ProviderAdapterFactory.create_from_integration(integration)
             result = await adapter.provision_access(
                 professional.email, request.role_or_scope
             )
@@ -334,12 +330,8 @@ class AccessService:
         if integration is None or professional is None:
             raise LookupError("Access request dependencies are missing.")
 
-        adapter = get_provider_adapter(
-            integration.provider.value,
-            str(tenant_id),
-            dict(integration.credentials_encrypted or {}),
-        )
         try:
+            adapter = ProviderAdapterFactory.create_from_integration(integration)
             revoked = await adapter.revoke_access(professional.email)
         except Exception:
             revoked = False
