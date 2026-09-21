@@ -25,8 +25,17 @@ from app.models.access import (
     AccessType,
     ApprovalDecision,
     ApprovalOutcome,
-    AuditEvent,
 )
+from app.models.assignment import Assignment, AssignmentStatus
+from app.models.audit import AuditEvent
+from app.models.governance import (
+    DocumentAcknowledgement,
+    DocumentAcknowledgementStatus,
+    Notification,
+    NotificationChannel,
+    NotificationStatus,
+)
+
 from app.models.onboarding import (
     OnboardingTemplate,
     ChecklistTemplateItem,
@@ -63,5 +72,12 @@ __all__ = [
     "AccessType",
     "ApprovalDecision",
     "ApprovalOutcome",
+    "Assignment",
+    "AssignmentStatus",
     "AuditEvent",
+    "DocumentAcknowledgement",
+    "DocumentAcknowledgementStatus",
+    "Notification",
+    "NotificationChannel",
+    "NotificationStatus",
 ]

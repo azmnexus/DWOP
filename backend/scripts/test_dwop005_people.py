@@ -1,30 +1,56 @@
-import httpx
+import sys
 import json
+from fastapi.testclient import TestClient
 
-base_url = "http://localhost:8000/api/v1"
+sys.path.insert(0, ".")
+
+from app.main import app
+from app.core.database import SessionLocal
+from app.models.talent import Professional
+
+client = TestClient(app)
+base_url = "/api/v1"
 
 print("=" * 80)
 print("DWOP-005: PROFESSIONAL / ENGAGEMENT & BULK IMPORT VERIFICATION")
 print("=" * 80)
 
+# Clean up test cohort emails if present so test is idempotent
+test_emails = [
+    "tunde.bakare@azm-nexus.com",
+    "emmanuel.okafor@azm-nexus.com",
+    "fatima.bello@azm-nexus.com",
+    "chidi.eze@azm-nexus.com",
+]
+db = SessionLocal()
+try:
+    db.query(Professional).filter(Professional.email.in_(test_emails)).delete(synchronize_session=False)
+    db.commit()
+finally:
+    db.close()
+
 # STEP 1: Authenticate Actors
 print("\n[STEP 1] Authenticating Test Actors (Admin, Manager, Member)...")
-admin_res = httpx.post(f"{base_url}/auth/login", json={"email": "admin@azm-nexus.com", "password": "Admin123!"})
+admin_res = client.post(f"{base_url}/auth/login", json={"email": "admin@azm-nexus.com", "password": "Admin123!"})
+assert admin_res.status_code == 200
 admin_token = admin_res.json()["access_token"]
 print("  Admin logged in successfully.")
 
-manager_res = httpx.post(f"{base_url}/auth/login", json={"email": "atanda.david@azm-nexus.com", "password": "LeadAtanda2026!"})
+manager_res = client.post(f"{base_url}/auth/login", json={"email": "atanda.david@azm-nexus.com", "password": "LeadAtanda2026!"})
+assert manager_res.status_code == 200
 manager_token = manager_res.json()["access_token"]
 print("  Manager logged in successfully.")
 
-member_res = httpx.post(f"{base_url}/auth/login", json={"email": "member@azm-nexus.com", "password": "Member123!"})
+member_res = client.post(f"{base_url}/auth/login", json={"email": "member@azm-nexus.com", "password": "Member123!"})
+assert member_res.status_code == 200
 member_token = member_res.json()["access_token"]
 print("  Member logged in successfully.")
 
 # STEP 2: List Seeded Professionals (Member access)
 print("\n[STEP 2] Listing Seeded Professionals (GET /people/ with Member Bearer Token)")
-r = httpx.get(f"{base_url}/people/", headers={"Authorization": f"Bearer {member_token}"})
+r = client.get(f"{base_url}/people/", headers={"Authorization": f"Bearer {member_token}"})
 print(f"HTTP Status: {r.status_code}")
+assert r.status_code == 200
 seeded_people = r.json()
 print(f"Total Seeded Count: {len(seeded_people)}")
 for p in seeded_people:
@@ -47,30 +73,33 @@ single_payload = {
         "compensation_rate": "$100/hr"
     }
 }
-r = httpx.post(f"{base_url}/people/", headers={"Authorization": f"Bearer {manager_token}"}, json=single_payload)
-print(f"HTTP Status: {r.status_code} {r.reason_phrase}")
+r = client.post(f"{base_url}/people/", headers={"Authorization": f"Bearer {manager_token}"}, json=single_payload)
+print(f"HTTP Status: {r.status_code}")
+assert r.status_code == 201
 created_p = r.json()
 print(f"Created Professional: {created_p['first_name']} {created_p['last_name']} (ID: {created_p['id']})")
 print(f"Engagement Count: {len(created_p.get('engagements', []))}")
 
 # STEP 4: RBAC Gate - Member Attempting Single Intake (Should be 403 Forbidden)
 print("\n[STEP 4] RBAC Gate: Member Attempting Single Intake (Should Return 403)")
-r = httpx.post(
+r = client.post(
     f"{base_url}/people/",
     headers={"Authorization": f"Bearer {member_token}"},
     json={"first_name": "Hacker", "last_name": "User", "email": "hacker@test.com", "skills": []}
 )
-print(f"HTTP Status: {r.status_code} {r.reason_phrase}")
+print(f"HTTP Status: {r.status_code}")
+assert r.status_code == 403
 print("Response Body:", json.dumps(r.json(), indent=2))
 
 # STEP 5: RBAC Gate - Manager Attempting Bulk Import (Should be 403 Forbidden per Directive matrix)
 print("\n[STEP 5] RBAC Gate: Manager Attempting Bulk Import (Should Return 403)")
-r = httpx.post(
+r = client.post(
     f"{base_url}/people/bulk-import",
     headers={"Authorization": f"Bearer {manager_token}"},
     json=[{"first_name": "Unauthorized", "last_name": "Bulk", "email": "unauth@test.com", "skills": []}]
 )
-print(f"HTTP Status: {r.status_code} {r.reason_phrase}")
+print(f"HTTP Status: {r.status_code}")
+assert r.status_code == 403
 print("Response Body:", json.dumps(r.json(), indent=2))
 
 # STEP 6: BULK IMPORT OF 3 PROFESSIONALS BY ADMIN (Atomic Transaction)
@@ -123,8 +152,9 @@ bulk_cohort = [
     }
 ]
 
-r = httpx.post(f"{base_url}/people/bulk-import", headers={"Authorization": f"Bearer {admin_token}"}, json=bulk_cohort)
-print(f"HTTP Status: {r.status_code} {r.reason_phrase}")
+r = client.post(f"{base_url}/people/bulk-import", headers={"Authorization": f"Bearer {admin_token}"}, json=bulk_cohort)
+print(f"HTTP Status: {r.status_code}")
+assert r.status_code == 201
 bulk_results = r.json()
 print(f"Bulk Import Result Count: {len(bulk_results)}")
 for person in bulk_results:
@@ -134,7 +164,7 @@ for person in bulk_results:
 
 # STEP 7: Verify Final Scoped List
 print("\n[STEP 7] Verifying Global Scoped Directory (GET /people/)")
-r = httpx.get(f"{base_url}/people/", headers={"Authorization": f"Bearer {admin_token}"})
+r = client.get(f"{base_url}/people/", headers={"Authorization": f"Bearer {admin_token}"})
 all_people = r.json()
 print(f"Total Professionals in Tenant Directory: {len(all_people)}")
 

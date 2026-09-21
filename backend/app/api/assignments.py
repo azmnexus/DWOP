@@ -3,10 +3,24 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.dependencies import get_current_active_user, require_admin
+from app.core.dependencies import (
+    get_current_active_user,
+    require_admin,
+    require_admin_or_manager,
+)
 from app.models.user import User
+from app.models.talent import Professional
 from app.models.project import Project, Client, ProjectStatus
+from app.models.assignment import Assignment, AssignmentStatus
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead
+from app.schemas.assignment import (
+    AssignmentCreate,
+    AssignmentUpdate,
+    AssignmentRead,
+    CapacityOverviewRead,
+    ProfessionalCapacityRead,
+)
+from app.services.assignment import AssignmentService
 
 router = APIRouter(prefix="/assignments", tags=["Assignments & Capacity"])
 
@@ -157,19 +171,119 @@ def delete_project(
     return None
 
 
-# ---------------- Capacity Placeholders ----------------
-@router.get("/capacity")
+# ---------------- Capacity & Allocation Endpoints ----------------
+@router.get("/capacity", response_model=CapacityOverviewRead)
 def get_capacity_overview(
     current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
 ):
-    """Query capacity allocations and availability (Accessible by all members)."""
-    return {"total_capacity_allocated_pct": 75, "available_headcount": 12}
+    """Query aggregate platform capacity allocations and availability (Accessible by all members)."""
+    return AssignmentService(db).get_capacity_overview(current_user.tenant_id)
 
 
-@router.post("/allocate")
+@router.get("/capacity/professionals/{professional_id}", response_model=ProfessionalCapacityRead)
+def get_professional_capacity(
+    professional_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve detailed capacity allocations and utilization for a specific professional."""
+    return AssignmentService(db).get_professional_capacity(current_user.tenant_id, professional_id)
+
+
+@router.post("/allocate", response_model=AssignmentRead, status_code=status.HTTP_201_CREATED)
 def allocate_capacity(
-    payload: dict,
-    admin_user: User = Depends(require_admin),
+    payload: AssignmentCreate,
+    operator: User = Depends(require_admin_or_manager),
+    db: Session = Depends(get_db),
 ):
-    """Allocate a professional to a project (Requires ADMIN role)."""
-    return {"status": "allocated", "payload": payload}
+    """Allocate a professional to a project.
+    Enforces the 100% capacity limit ceiling and logs an immutable audit event.
+    Requires ADMIN or MANAGER role.
+    """
+    return AssignmentService(db).allocate_capacity(operator.tenant_id, payload, operator)
+
+
+@router.get("", response_model=List[AssignmentRead])
+def list_assignments(
+    project_id: Optional[uuid.UUID] = None,
+    professional_id: Optional[uuid.UUID] = None,
+    status: Optional[AssignmentStatus] = None,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """List project assignments scoped to current tenant with optional filters."""
+    return AssignmentService(db).list_assignments(
+        tenant_id=current_user.tenant_id,
+        project_id=project_id,
+        professional_id=professional_id,
+        status_filter=status,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/my-allocations", response_model=List[AssignmentRead])
+def get_my_allocations(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve active project allocations for the authenticated professional."""
+    prof = (
+        db.query(Professional)
+        .filter(
+            Professional.user_id == current_user.id,
+            Professional.tenant_id == current_user.tenant_id,
+        )
+        .first()
+    )
+    if not prof:
+        return []
+    return AssignmentService(db).list_assignments(
+        tenant_id=current_user.tenant_id,
+        professional_id=prof.id,
+    )
+
+
+@router.get("/{assignment_id}", response_model=AssignmentRead)
+def get_assignment(
+    assignment_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve details for a single assignment in current tenant."""
+    assignment = (
+        db.query(Assignment)
+        .filter(
+            Assignment.id == assignment_id,
+            Assignment.tenant_id == current_user.tenant_id,
+        )
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Assignment '{assignment_id}' not found in current tenant.",
+        )
+    return AssignmentService(db)._enrich_assignment(assignment)
+
+
+@router.patch("/{assignment_id}", response_model=AssignmentRead)
+def update_assignment(
+    assignment_id: uuid.UUID,
+    payload: AssignmentUpdate,
+    operator: User = Depends(require_admin_or_manager),
+    db: Session = Depends(get_db),
+):
+    """Update an assignment's capacity percentage, status, or role.
+    Enforces maximum 100% capacity rule and logs immutable audit trail.
+    Requires ADMIN or MANAGER role.
+    """
+    return AssignmentService(db).update_assignment(
+        tenant_id=operator.tenant_id,
+        assignment_id=assignment_id,
+        payload=payload,
+        actor=operator,
+    )

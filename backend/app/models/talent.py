@@ -84,6 +84,7 @@ class Professional(Base):
     tenant = relationship("Tenant")
     user = relationship("User", foreign_keys=[user_id])
     engagements = relationship("Engagement", back_populates="professional", cascade="all, delete-orphan")
+    assignments = relationship("Assignment", back_populates="professional", cascade="all, delete-orphan")
 
 
 class Engagement(Base):

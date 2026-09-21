@@ -1,9 +1,10 @@
 # DWOP Platform — Sprint 0 Engineering & Architecture Progress Report
 
-**Document Version**: 1.0 (Sprint 0 / Foundation Milestone)  
+**Document Version**: 1.2 (Sprint 0 / Assignments & Capacity Allocation Engine Milestone)  
 **Organization**: AZM Nexus Limited  
 **System**: Digital Workforce Operations Platform (DWOP)  
-**Status**: Completed through Ticket DWOP-006  
+**Status**: Completed through Ticket DWOP-009 (including DWOP-010 through DWOP-013, and DWOP-007/008 frontend)  
+
 
 ---
 
@@ -89,9 +90,144 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
   - `PATCH /api/v1/onboarding/runs/{run_id}/items/{item_id}`: Allows completing or blocking items with audit justifications.
   - `GET /api/v1/onboarding/runs/{run_id}`: Full run inspection with dynamic completion percentage.
 
+### ✅ DWOP-009: Assignments & Capacity Allocation Engine (Walid)
+- **Model**: Implemented `Assignment` (Table 9 of locked ERD) with foreign keys to `tenants.id`, `professionals.id`, `projects.id`, `teams.id`, role, capacity percentage, dates, and `status` (`active`, `completed`, `reassigned`).
+- **Capacity Threshold Validation**:
+  - Strict 100% hard-stop ceiling: Any allocation or update causing a professional's aggregate active capacity to exceed 100% across concurrent projects fails closed with `HTTP 400 Bad Request`.
+  - Dynamic availability synchronization: Updates `availability_status` on `Professional` (`available` at 0%, `partially_booked` between 1% and 99%, `fully_booked` at 100%).
+  - Lifecycle state synchronization: Automatically advances status from `ready` to `assigned` when allocated, and back to `ready` when capacity drops to 0%.
+- **Atomic In-Transaction Audit Emission**:
+  - `assignment.allocated` emitted upon creation with project, professional, and capacity metadata.
+  - `assignment.updated` emitted upon status transition or capacity adjustment.
+- **Endpoints Implemented in `backend/app/api/assignments.py`**:
+  - `POST /api/v1/assignments/allocate`: Capacity allocation guarded by `require_admin_or_manager`.
+  - `GET /api/v1/assignments/capacity`: Tenant-wide capacity overview (headcount, utilization, active counts).
+  - `GET /api/v1/assignments/capacity/professionals/{id}`: Detailed capacity breakdown per talent profile.
+  - `GET /api/v1/assignments`: Filterable list (`project_id`, `professional_id`, `status`).
+  - `GET /api/v1/assignments/my-allocations`: Self-service allocations for authenticated professional.
+  - `GET /api/v1/assignments/{id}`: Single assignment details.
+  - `PATCH /api/v1/assignments/{id}`: Capacity adjustment and status lifecycle transitions.
+
+### ✅ DWOP-010: Access Request Lifecycle (Oladotun + Walid Review)
+- Implemented models: `Integration` (Table 14), `AccessRequest` (Table 15), `ApprovalDecision` (Table 16).
+- Endpoints implemented:
+  - `GET /api/v1/access/requests`: Scoped access request directory (Members restricted to own requests).
+  - `POST /api/v1/access/requests`: Submit request in `requested` state.
+  - `POST /api/v1/access/requests/{id}/approve`: Approvals with rationale (Admin global, Manager restricted to direct reports).
+  - `POST /api/v1/access/requests/{id}/provision`: Calls provider adapter, transitions to `provisioned` or `failed`.
+  - `POST /api/v1/access/requests/{id}/revoke`: Revocation endpoint guarded strictly by `require_admin`.
+  - `GET /api/v1/access/requests/{id}/status`: Single request status inspection.
+
+### ✅ DWOP-011: Provider Adapter Framework (Oladotun + Atanda)
+- Provider-agnostic abstraction in `backend/app/integrations/base.py` (`BaseProviderAdapter`).
+- Factory and registry pattern in `backend/app/integrations/factory.py` (`get_provider_adapter`, `register_provider_adapter`).
+- Swappable provider mechanism without touching core domain services.
+
+### ✅ DWOP-012: Safe GitHub Mock Adapter POC (Oladotun)
+- In-memory sandbox implementation (`GitHubMockAdapter`) with zero network I/O (`network_io = False`).
+- Supports idempotent provisioning, revocation, simulated failure fallback (`simulate_failure: True`), and fail-closed error handling.
+
+### ✅ DWOP-013: Centralized Audit Service & Activity Timeline API (Khalifa / Walid)
+- Created dedicated model `AuditEvent` (Table 19) in `backend/app/models/audit.py`.
+- Centralized domain service `AuditService` in `backend/app/services/audit.py` (`log_event`, `list_logs`, `count_logs`).
+- Retroactively hooked immutable audit emission into:
+  - DWOP-004 Auth: `POST /api/v1/auth/login` emits `auth.login_successful`.
+  - DWOP-005 People: `POST /api/v1/people` emits `professional.created`; `POST /api/v1/people/bulk-import` emits `professional.bulk_imported`.
+  - DWOP-006 Onboarding: `POST /api/v1/onboarding/runs` emits `onboarding_run.created`; `PATCH /api/v1/onboarding/runs/{run_id}/items/{item_id}` emits `onboarding_item.status_changed`.
+  - DWOP-010 Access: State changes emit `access_request.created`, `access_request.status_changed`, `access_request.revocation_failed`.
+- Implemented read endpoints in `backend/app/api/audit.py`:
+  - `GET /api/v1/audit/logs`: Filterable timeline (`actor_user_id`, `action`, `target_type`, `skip`, `limit`) guarded by `require_admin`.
+  - `GET /api/v1/audit/export`: Tenant compliance ledger export summary.
+
+### ✅ DWOP-007: Diamond Glass UI System, Auth Flow & Enterprise App Shell (Usman)
+- **Design System & Aesthetics**:
+  - Implemented the Diamond Glass visual design system using curated CSS custom properties in `frontend/src/app/globals.css`.
+  - Glassmorphic translucent cards (`backdrop-filter: blur(12px)`), sapphire glowing borders, micro-interactions, responsive CSS grid.
+  - Component library built in `frontend/src/components/ui/`: `Button`, `Input`, `Card`, `Badge`, `Skeleton`, `Toast`, `EmptyState`, `ErrorState`.
+- **Authentication & State Management**:
+  - `frontend/src/contexts/AuthContext.tsx`: Token persistence via `localStorage` and `js-cookie`, handling login, logout, and user session hydration.
+  - `frontend/src/middleware.ts`: Next.js edge route protection redirecting unauthenticated users to `/login`.
+  - `frontend/src/app/login/page.tsx`: Glassmorphic split-screen corporate login with animated gradient background, error banners, and demo credential quick-fill.
+- **App Shell & Layout**:
+  - `AppHeader`: Sticky diamond-blur header with tenant branding, search shortcut, notifications bell, and user avatar dropdown.
+  - `Sidebar`: Desktop collapsible navigation with icon-accented active states and RBAC badge badges.
+  - `MobileDrawer`: Slide-over responsive navigation drawer for mobile and tablet viewports.
+
+### ✅ DWOP-008: Workforce Directory & Professional Profile View (Usman)
+- **Workforce Directory (`/workforce`)**:
+  - Real-time client-side search by name, email, or skill.
+  - Status filters (`All`, `Intake`, `Onboarding`, `Ready`, `Active`, `Offboarding`, `Exited`).
+  - Responsive data grid displaying avatar badges, contact details, skill chips, availability status, and dynamic action buttons.
+  - Zero mock data: Fetches directly from `GET /api/v1/people` with Bearer auth headers.
+  - Comprehensive states: Shimmer skeleton loaders during network transit, empty filter state, and inline retryable error states.
+- **Professional Detail View (`/workforce/[id]`)**:
+  - Deep-dive talent profile fetching from `GET /api/v1/people/{id}`.
+  - Multi-card modular layout: Identity & Contact, Lifecycle & Availability, Skills & Expertise, and Contract Engagement Terms.
+  - Supplementary onboarding runs check integration: Wired to `GET /api/v1/onboarding/runs?professional_id={id}`.
+
+### ✅ Task P-01: Service Layer Pattern Extraction (Walid)
+- **Extraction of `PeopleService` (`backend/app/services/people.py`)**:
+  - Encapsulates talent listing, single intake/registration, profile query, profile update, and atomic batch intake with in-transaction audit emissions (`professional.created`, `professional.bulk_imported`).
+  - Strict tenant scoping moved into the service layer for all queries and mutations.
+  - Thinned `backend/app/api/people.py` into a declarative router delegating all domain logic to `PeopleService(db)`.
+- **Extraction of `OnboardingService` (`backend/app/services/onboarding.py`)**:
+  - Encapsulates onboarding template creation and listing, run instantiation with dynamic task generation and deadline calculations, run inspection with progress recalculation, and checklist item updates.
+  - Preserves blocker-reason validation (`detail="Blocker reason is required when marking an item as blocked."`) and automatic run progress recalculation.
+  - In-transaction audit emissions (`onboarding_run.created`, `onboarding_item.status_changed`) preserved within the active DB transaction.
+  - Thinned `backend/app/api/onboarding.py` into a declarative router delegating to `OnboardingService(db)`.
+- **Extraction of `OrganizationService` (`backend/app/services/organization.py`)**:
+  - Encapsulates multi-tenant department and team operations (CRUD, listings scoped by tenant and department).
+  - Implements circular dependency hierarchy prevention (`_validate_hierarchy`) that traverses the ancestor tree to prevent self-parenting and cyclic department hierarchies.
+  - Thinned `backend/app/api/departments.py` and `backend/app/api/teams.py` into declarative routers delegating to `OrganizationService(db)`.
+- **Packaging & Boundary Integrity**:
+  - Updated `backend/app/services/__init__.py` exporting `AuditService`, `AccessService`, `AssignmentService`, `PeopleService`, `OnboardingService`, and `OrganizationService`.
+  - Strict boundary maintained: Zero modifications to `backend/app/services/access.py`, `backend/app/api/access.py`, or `backend/app/integrations/` (Dotun's active P-03 zone).
+  - 100% external REST contract stability verified across all routes, HTTP methods, status codes, and response models.
+
+
 ---
 
-## 4. Current Seed Data Reference
+## 4. API Endpoint Matrix & Frontend Consumption Status
+
+| HTTP Method | Endpoint Path | RBAC / Auth Guard | Ticket Mapping | Frontend Consumption Status |
+|---|---|---|---|---|
+| `POST` | `/api/v1/auth/login` | Public | DWOP-004 | ✅ Consumed in `frontend/src/app/login/page.tsx` & `AuthContext` |
+| `GET` | `/api/v1/auth/me` | Authenticated (`get_current_active_user`) | DWOP-004 | ✅ Consumed in `frontend/src/contexts/AuthContext.tsx` |
+| `GET` | `/api/v1/departments` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
+| `POST` | `/api/v1/departments` | `require_admin` | DWOP-003 | ⏳ Queued for Org Management UI |
+| `GET` | `/api/v1/departments/{id}` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
+| `GET` | `/api/v1/teams` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
+| `POST` | `/api/v1/teams` | `require_admin` | DWOP-003 | ⏳ Queued for Org Management UI |
+| `GET` | `/api/v1/people` | Authenticated | DWOP-005 | ✅ Consumed in `frontend/src/app/(authenticated)/workforce/page.tsx` |
+| `POST` | `/api/v1/people` | `require_admin_or_manager` | DWOP-005 | ⏳ Queued for Add Talent Modal |
+| `GET` | `/api/v1/people/{id}` | Authenticated | DWOP-005 | ✅ Consumed in `frontend/src/app/(authenticated)/workforce/[id]/page.tsx` |
+| `POST` | `/api/v1/people/bulk-import` | `require_admin` | DWOP-005 | ⏳ Queued for Bulk Import Modal |
+| `GET` | `/api/v1/onboarding/templates` | Authenticated | DWOP-006 | ⏳ Queued for Onboarding Setup UI |
+| `POST` | `/api/v1/onboarding/templates` | `require_admin` | DWOP-006 | ⏳ Queued for Onboarding Setup UI |
+| `POST` | `/api/v1/onboarding/runs` | `require_admin_or_manager` | DWOP-006 | ⏳ Queued for Trigger Onboarding Action |
+| `GET` | `/api/v1/onboarding/runs` | Authenticated | DWOP-006/Alignment | ✅ Ready (wired for `workforce/[id]` runs listing) |
+| `GET` | `/api/v1/onboarding/runs/{run_id}` | Authenticated | DWOP-006 | ⏳ Queued for `/onboarding/[run_id]` UI |
+| `PATCH` | `/api/v1/onboarding/runs/{run_id}/items/{item_id}` | Admin / Manager / Assigned Prof | DWOP-006 | ⏳ Queued for Checklist Interactive Tasks |
+| `GET` | `/api/v1/assignments/projects` | Authenticated | DWOP-003/009 | ⏳ Queued for Project Selector |
+| `POST` | `/api/v1/assignments/projects` | `require_admin` | DWOP-003/009 | ⏳ Queued for Project Creation Modal |
+| `GET` | `/api/v1/assignments/capacity` | Authenticated | DWOP-009 | ⏳ Queued for Capacity Dashboard |
+| `GET` | `/api/v1/assignments/capacity/professionals/{id}` | Authenticated | DWOP-009 | ⏳ Queued for Profile Allocation Breakdown |
+| `POST` | `/api/v1/assignments/allocate` | `require_admin_or_manager` | DWOP-009 | ⏳ Queued for Allocate Talent Modal |
+| `GET` | `/api/v1/assignments` | Authenticated | DWOP-009 | ⏳ Queued for Allocations Grid |
+| `GET` | `/api/v1/assignments/my-allocations` | Authenticated | DWOP-009 | ⏳ Queued for Personal Projects View |
+| `PATCH` | `/api/v1/assignments/{id}` | `require_admin_or_manager` | DWOP-009 | ⏳ Queued for Capacity Modification |
+| `GET` | `/api/v1/access/requests` | Authenticated (Members restricted to own) | DWOP-010 | ⏳ Queued for Access Management UI |
+| `POST` | `/api/v1/access/requests` | Authenticated | DWOP-010 | ⏳ Queued for Request Access Modal |
+| `POST` | `/api/v1/access/requests/{id}/approve` | Admin or Manager (direct report) | DWOP-010 | ⏳ Queued for Manager Approval Portal |
+| `POST` | `/api/v1/access/requests/{id}/provision` | `require_admin_or_manager` | DWOP-010 | ⏳ Queued for Provisioning Action |
+| `POST` | `/api/v1/access/requests/{id}/revoke` | `require_admin` | DWOP-010 | ⏳ Queued for Security Revocation Panel |
+| `GET` | `/api/v1/access/requests/{id}/status` | Authenticated | DWOP-010 | ⏳ Queued for Access Status Polling |
+| `GET` | `/api/v1/audit/logs` | `require_admin` | DWOP-013 | ⏳ Queued for Executive Activity Timeline UI |
+| `GET` | `/api/v1/audit/export` | `require_admin` | DWOP-013 | ⏳ Queued for Compliance Export Button |
+
+---
+
+## 5. Current Seed Data Reference
 
 The database seed script ([`backend/scripts/seed_org_structure.py`](file:///c:/Users/walid/OneDrive/Documents/Work/dwop-platform/backend/scripts/seed_org_structure.py)) provisions:
 
@@ -140,7 +276,7 @@ The database seed script ([`backend/scripts/seed_org_structure.py`](file:///c:/U
 
 ---
 
-## 5. How to Run & Verify
+## 6. How to Run & Verify
 
 ```bash
 # 1. Activate backend environment
@@ -157,6 +293,11 @@ uvicorn app.main:app --reload --port 8000
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
+python scripts/test_dwop009_assignments_capacity.py
+python scripts/test_dwop010_access_lifecycle.py
+python scripts/test_dwop011_adapters.py
+python scripts/test_dwop012_github_mock_poc.py
+python scripts/test_dwop013_audit_timeline.py
 ```
 
 * **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)

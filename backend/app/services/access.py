@@ -15,6 +15,7 @@ from app.models.access import (
     AuditEvent,
     Integration,
 )
+from app.services.audit import AuditService
 from app.models.talent import Professional
 from app.models.user import User, UserRole
 
@@ -90,15 +91,14 @@ class AccessService:
         target_id: uuid.UUID,
         metadata: Dict[str, Any] | None = None,
     ) -> None:
-        self.db.add(
-            AuditEvent(
-                tenant_id=tenant_id,
-                actor_user_id=actor_user_id,
-                action=action,
-                target_type="access_request",
-                target_id=target_id,
-                event_metadata=metadata or {},
-            )
+        AuditService(self.db).log_event(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type="access_request",
+            target_id=target_id,
+            metadata=metadata or {},
+            commit=False,
         )
 
     def list_requests(self, current_user: User) -> Iterable[AccessRequest]:
@@ -193,6 +193,23 @@ class AccessService:
         self.db.refresh(request)
         return request
 
+    def _is_manager_for_professional(
+        self, tenant_id: uuid.UUID, manager_user_id: uuid.UUID, professional_id: uuid.UUID
+    ) -> bool:
+        """Verify if manager supervises this professional via an active onboarding run."""
+        from app.models.onboarding import OnboardingRun
+
+        run = (
+            self.db.query(OnboardingRun)
+            .filter(
+                OnboardingRun.tenant_id == tenant_id,
+                OnboardingRun.professional_id == professional_id,
+                OnboardingRun.assigned_manager_id == manager_user_id,
+            )
+            .first()
+        )
+        return run is not None
+
     def approve_request(
         self,
         *,
@@ -202,6 +219,14 @@ class AccessService:
         rationale: str | None = None,
     ) -> AccessRequest:
         request = self._request(tenant_id, request_id)
+
+        # Locked RBAC Rule: ADMIN has global approval; MANAGER is restricted to direct reports
+        if approver.role == UserRole.MANAGER:
+            if not self._is_manager_for_professional(tenant_id, approver.id, request.professional_id):
+                raise AccessLifecycleError(
+                    "Managers are only authorized to approve access requests for direct reports or assigned team members."
+                )
+
         self._transition(request, AccessRequestStatus.approved, approver.id)
         request.approved_by_user_id = approver.id
         self.db.add(

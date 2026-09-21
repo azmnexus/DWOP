@@ -9,6 +9,7 @@ from app.core.dependencies import get_current_active_user
 from app.core.security import verify_password, create_access_token
 from app.models.user import User
 from app.schemas.user import UserRead
+from app.services.audit import AuditService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -81,6 +82,17 @@ async def login(
         email=user.email,
     )
 
+    # Log immutable audit event for successful authentication
+    AuditService(db).log_event(
+        tenant_id=user.tenant_id,
+        actor_user_id=user.id,
+        action="auth.login_successful",
+        target_type="User",
+        target_id=user.id,
+        metadata={"email": user.email, "role": user.role.value if hasattr(user.role, "value") else str(user.role)},
+        commit=True,
+    )
+
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
@@ -98,3 +110,43 @@ def get_current_user_profile(
 ):
     """Retrieve profile and role of the currently authenticated user from JWT."""
     return current_user
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_access_token(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Generate a refreshed access token for the authenticated user session."""
+    access_token = create_access_token(
+        subject=str(current_user.id),
+        tenant_id=str(current_user.tenant_id),
+        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+        email=current_user.email,
+    )
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+        email=current_user.email,
+    )
+
+
+@router.post("/logout")
+def logout(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Log out current user and record audit logout event."""
+    AuditService(db).log_event(
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        action="auth.logout",
+        target_type="User",
+        target_id=current_user.id,
+        metadata={"email": current_user.email},
+        commit=True,
+    )
+    return {"status": "logged_out", "detail": "Session successfully invalidated."}
