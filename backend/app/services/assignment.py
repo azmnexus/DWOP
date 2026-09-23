@@ -7,6 +7,10 @@ from app.models.talent import Professional, ProfessionalStatus, AvailabilityStat
 from app.models.project import Project
 from app.models.organization import Team
 from app.models.assignment import Assignment, AssignmentStatus
+from app.repositories.assignment import AssignmentRepository
+from app.repositories.organization import OrganizationRepository
+from app.repositories.professional import ProfessionalRepository
+from app.repositories.project import ProjectRepository
 from app.schemas.assignment import (
     AssignmentCreate,
     AssignmentUpdate,
@@ -20,8 +24,19 @@ from app.services.audit import AuditService
 class AssignmentService:
     """Domain service managing workforce capacity allocations and threshold rules."""
 
-    def __init__(self, db: Session):
+    def __init__(
+        self,
+        db: Session,
+        assignment_repo: Optional[AssignmentRepository] = None,
+        project_repo: Optional[ProjectRepository] = None,
+        professional_repo: Optional[ProfessionalRepository] = None,
+        org_repo: Optional[OrganizationRepository] = None,
+    ):
         self.db = db
+        self.assignment_repo = assignment_repo or AssignmentRepository(db)
+        self.project_repo = project_repo or ProjectRepository(db)
+        self.professional_repo = professional_repo or ProfessionalRepository(db)
+        self.org_repo = org_repo or OrganizationRepository(db)
 
     def get_active_capacity(
         self,
@@ -30,15 +45,11 @@ class AssignmentService:
         exclude_assignment_id: Optional[uuid.UUID] = None,
     ) -> int:
         """Sum total allocated capacity percentage for active assignments."""
-        query = self.db.query(Assignment).filter(
-            Assignment.tenant_id == tenant_id,
-            Assignment.professional_id == professional_id,
-            Assignment.status == AssignmentStatus.active,
+        return self.assignment_repo.sum_active_capacity(
+            tenant_id=tenant_id,
+            professional_id=professional_id,
+            exclude_assignment_id=exclude_assignment_id,
         )
-        if exclude_assignment_id:
-            query = query.filter(Assignment.id != exclude_assignment_id)
-        active_assignments = query.all()
-        return sum(a.capacity_percentage for a in active_assignments)
 
     def recalculate_availability(self, professional: Professional) -> AvailabilityStatus:
         """Recalculate and update the availability status for a professional."""
@@ -73,14 +84,7 @@ class AssignmentService:
         Logs an immutable audit event strictly inside the database transaction.
         """
         # 1. Validate Professional in tenant
-        prof = (
-            self.db.query(Professional)
-            .filter(
-                Professional.id == payload.professional_id,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        prof = self.professional_repo.get_by_id(tenant_id, payload.professional_id)
         if not prof:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -88,14 +92,7 @@ class AssignmentService:
             )
 
         # 2. Validate Project in tenant
-        proj = (
-            self.db.query(Project)
-            .filter(
-                Project.id == payload.project_id,
-                Project.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        proj = self.project_repo.get_by_id(tenant_id, payload.project_id)
         if not proj:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -104,14 +101,7 @@ class AssignmentService:
 
         # 3. Validate Team if provided
         if payload.team_id:
-            team = (
-                self.db.query(Team)
-                .filter(
-                    Team.id == payload.team_id,
-                    Team.tenant_id == tenant_id,
-                )
-                .first()
-            )
+            team = self.org_repo.get_team(tenant_id, payload.team_id)
             if not team:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -144,8 +134,7 @@ class AssignmentService:
             end_date=payload.end_date,
             status=AssignmentStatus.active,
         )
-        self.db.add(assignment)
-        self.db.flush()
+        self.assignment_repo.create(tenant_id, assignment)
 
         # 6. Recalculate Professional Availability & Advance Lifecycle
         self.recalculate_availability(prof)
@@ -185,14 +174,7 @@ class AssignmentService:
         """Update an existing assignment (capacity adjustment, completion, reassignment).
         Enforces 100% capacity ceiling and logs audit event inside transaction.
         """
-        assignment = (
-            self.db.query(Assignment)
-            .filter(
-                Assignment.id == assignment_id,
-                Assignment.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        assignment = self.assignment_repo.get_by_id(tenant_id, assignment_id)
         if not assignment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -278,32 +260,25 @@ class AssignmentService:
         limit: int = 100,
     ) -> List[AssignmentRead]:
         """List assignments with optional filters, enriched with names."""
-        query = self.db.query(Assignment).filter(Assignment.tenant_id == tenant_id)
-        if project_id:
-            query = query.filter(Assignment.project_id == project_id)
-        if professional_id:
-            query = query.filter(Assignment.professional_id == professional_id)
-        if status_filter:
-            query = query.filter(Assignment.status == status_filter)
-        assignments = query.offset(skip).limit(limit).all()
+        assignments = self.assignment_repo.list_assignments(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            professional_id=professional_id,
+            status=status_filter,
+            skip=skip,
+            limit=limit,
+        )
         return [self._enrich_assignment(a) for a in assignments]
 
     def get_capacity_overview(self, tenant_id: uuid.UUID) -> CapacityOverviewRead:
         """Compute aggregate platform-wide capacity statistics for current tenant."""
-        all_profs = self.db.query(Professional).filter(Professional.tenant_id == tenant_id).all()
+        all_profs = self.professional_repo.get_all(tenant_id)
         total_profs = len(all_profs)
         avail = sum(1 for p in all_profs if p.availability_status == AvailabilityStatus.available)
         part = sum(1 for p in all_profs if p.availability_status == AvailabilityStatus.partially_booked)
         full = sum(1 for p in all_profs if p.availability_status == AvailabilityStatus.fully_booked)
 
-        active_assignments = (
-            self.db.query(Assignment)
-            .filter(
-                Assignment.tenant_id == tenant_id,
-                Assignment.status == AssignmentStatus.active,
-            )
-            .all()
-        )
+        active_assignments = self.assignment_repo.get_all_active_assignments(tenant_id)
         total_active_count = len(active_assignments)
         sum_allocated_capacity = sum(a.capacity_percentage for a in active_assignments)
         avg_utilization = round(sum_allocated_capacity / total_profs, 2) if total_profs > 0 else 0.0
@@ -323,14 +298,7 @@ class AssignmentService:
         professional_id: uuid.UUID,
     ) -> ProfessionalCapacityRead:
         """Detailed capacity breakdown for an individual professional."""
-        prof = (
-            self.db.query(Professional)
-            .filter(
-                Professional.id == professional_id,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        prof = self.professional_repo.get_by_id(tenant_id, professional_id)
         if not prof:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -338,13 +306,10 @@ class AssignmentService:
             )
 
         active_alloc = self.get_active_capacity(tenant_id, prof.id)
-        assignments = (
-            self.db.query(Assignment)
-            .filter(
-                Assignment.tenant_id == tenant_id,
-                Assignment.professional_id == prof.id,
-            )
-            .all()
+        assignments = self.assignment_repo.list_assignments(
+            tenant_id=tenant_id,
+            professional_id=prof.id,
+            limit=1000,
         )
 
         return ProfessionalCapacityRead(

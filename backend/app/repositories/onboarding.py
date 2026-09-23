@@ -104,3 +104,25 @@ class OnboardingRepository:
             )
             .first()
         )
+
+    def list_items_for_run(self, run_id: uuid.UUID) -> List[OnboardingItem]:
+        """Fetch all concrete checklist items for a given run."""
+        return (
+            self.db.query(OnboardingItem)
+            .filter(OnboardingItem.run_id == run_id)
+            .all()
+        )
+
+    def has_manager_assignment(
+        self, tenant_id: uuid.UUID, manager_user_id: uuid.UUID, professional_id: uuid.UUID
+    ) -> bool:
+        """Check whether a manager is assigned to an onboarding run for the professional."""
+        return (
+            self.run_repo._scoped_query(tenant_id)
+            .filter(
+                OnboardingRun.professional_id == professional_id,
+                OnboardingRun.assigned_manager_id == manager_user_id,
+            )
+            .first()
+            is not None
+        )

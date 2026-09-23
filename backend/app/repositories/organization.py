@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Union
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.models.organization import Department, Team
@@ -52,6 +53,15 @@ class OrganizationRepository:
         """Lookup parent department strictly within the same tenant to prevent cross-tenant cycles."""
         return self.dept_repo.get_by_id(tenant_id, parent_id)
 
+    def update_department(
+        self,
+        tenant_id: uuid.UUID,
+        department_id: uuid.UUID,
+        obj_in: Union[BaseModel, Dict[str, Any]],
+    ) -> Optional[Department]:
+        """Apply updates to department. Flushes without committing."""
+        return self.dept_repo.update(tenant_id, department_id, obj_in)
+
     def delete_department(
         self, tenant_id: uuid.UUID, department_id: uuid.UUID
     ) -> bool:
@@ -89,6 +99,15 @@ class OrganizationRepository:
         self.db.add(team)
         self.db.flush()
         return team
+
+    def update_team(
+        self,
+        tenant_id: uuid.UUID,
+        team_id: uuid.UUID,
+        obj_in: Union[BaseModel, Dict[str, Any]],
+    ) -> Optional[Team]:
+        """Apply updates to team. Flushes without committing."""
+        return self.team_repo.update(tenant_id, team_id, obj_in)
 
     def delete_team(self, tenant_id: uuid.UUID, team_id: uuid.UUID) -> bool:
         """Delete team if scoped to tenant."""

@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_active_user
 from app.core.security import verify_password, create_access_token
 from app.models.user import User
+from app.repositories.user import UserRepository
 from app.schemas.user import UserRead
 from app.services.audit import AuditService
 
@@ -59,8 +60,8 @@ async def login(
             detail="Both 'email' and 'password' are required.",
         )
 
-    # Lookup user by email in database
-    user = db.query(User).filter(User.email == str(email).lower().strip()).first()
+    # Lookup user by email in database via UserRepository
+    user = UserRepository(db).get_by_email_global(str(email))
     if not user or not verify_password(str(password), user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

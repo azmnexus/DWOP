@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.core.tenant import set_current_tenant_id
 from app.models.user import User, UserRole
+from app.repositories.user import UserRepository
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/auth/login",
@@ -35,7 +36,7 @@ def get_current_user(
     except (JWTError, ValueError):
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = UserRepository(db).get_by_id_global(user_id)
     if user is None:
         raise credentials_exception
 

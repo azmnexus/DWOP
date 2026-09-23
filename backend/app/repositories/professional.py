@@ -54,6 +54,10 @@ class ProfessionalRepository(BaseRepository[Professional]):
             query = query.filter(Professional.availability_status == availability_filter)
         return query.offset(skip).limit(limit).all()
 
+    def get_all(self, tenant_id: uuid.UUID) -> List[Professional]:
+        """Fetch all professionals in the tenant."""
+        return self._scoped_query(tenant_id).all()
+
     def get_engagement(
         self, tenant_id: uuid.UUID, professional_id: uuid.UUID
     ) -> Optional[Engagement]:

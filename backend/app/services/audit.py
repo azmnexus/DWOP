@@ -2,13 +2,15 @@ import uuid
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 from app.models.audit import AuditEvent
+from app.repositories.audit import AuditRepository
 
 
 class AuditService:
     """Tenant-scoped, append-only immutable audit logging service (DWOP-013)."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, repo: Optional[AuditRepository] = None):
         self.db = db
+        self.repo = repo or AuditRepository(db)
 
     def log_event(
         self,
@@ -24,15 +26,14 @@ class AuditService:
         """Write an append-only AuditEvent.
         If commit=False (default), leaves transaction open to commit atomically with the caller.
         """
-        event = AuditEvent(
+        event = self.repo.log_event(
             tenant_id=tenant_id,
             actor_user_id=actor_user_id,
             action=action,
             target_type=target_type,
             target_id=target_id,
-            event_metadata=metadata or {},
+            metadata=metadata,
         )
-        self.db.add(event)
         if commit:
             self.db.commit()
             self.db.refresh(event)
@@ -49,14 +50,14 @@ class AuditService:
         limit: int = 50,
     ) -> List[AuditEvent]:
         """Query tenant-scoped audit timeline ordered by timestamp descending."""
-        query = self.db.query(AuditEvent).filter(AuditEvent.tenant_id == tenant_id)
-        if actor_user_id:
-            query = query.filter(AuditEvent.actor_user_id == actor_user_id)
-        if action:
-            query = query.filter(AuditEvent.action == action)
-        if target_type:
-            query = query.filter(AuditEvent.target_type == target_type)
-        return query.order_by(AuditEvent.timestamp.desc()).offset(skip).limit(limit).all()
+        return self.repo.list_events(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+            skip=skip,
+            limit=limit,
+        )
 
     def count_logs(
         self,
@@ -67,11 +68,9 @@ class AuditService:
         target_type: Optional[str] = None,
     ) -> int:
         """Count total matching audit events for tenant."""
-        query = self.db.query(AuditEvent).filter(AuditEvent.tenant_id == tenant_id)
-        if actor_user_id:
-            query = query.filter(AuditEvent.actor_user_id == actor_user_id)
-        if action:
-            query = query.filter(AuditEvent.action == action)
-        if target_type:
-            query = query.filter(AuditEvent.target_type == target_type)
-        return query.count()
+        return self.repo.count_events(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+        )

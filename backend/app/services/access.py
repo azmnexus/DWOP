@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, Optional
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,9 @@ from app.models.access import (
     AuditEvent,
     Integration,
 )
+from app.repositories.access import AccessRepository
+from app.repositories.onboarding import OnboardingRepository
+from app.repositories.professional import ProfessionalRepository
 from app.services.audit import AuditService
 from app.models.talent import Professional
 from app.models.user import User, UserRole
@@ -45,18 +48,20 @@ _ALLOWED_TRANSITIONS = {
 class AccessService:
     """Tenant-scoped, audited access-request lifecycle service."""
 
-    def __init__(self, db: Session):
+    def __init__(
+        self,
+        db: Session,
+        repo: Optional[AccessRepository] = None,
+        professional_repo: Optional[ProfessionalRepository] = None,
+        onboarding_repo: Optional[OnboardingRepository] = None,
+    ):
         self.db = db
+        self.repo = repo or AccessRepository(db)
+        self.professional_repo = professional_repo or ProfessionalRepository(db)
+        self.onboarding_repo = onboarding_repo or OnboardingRepository(db)
 
     def _request(self, tenant_id: uuid.UUID, request_id: uuid.UUID) -> AccessRequest:
-        request = (
-            self.db.query(AccessRequest)
-            .filter(
-                AccessRequest.id == request_id,
-                AccessRequest.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        request = self.repo.get_request(tenant_id, request_id)
         if request is None:
             raise LookupError("Access request not found.")
         return request
@@ -107,38 +112,26 @@ class AccessService:
         )
 
     def list_requests(self, current_user: User) -> Iterable[AccessRequest]:
-        query = self.db.query(AccessRequest).filter(
-            AccessRequest.tenant_id == current_user.tenant_id
-        )
         if current_user.role == UserRole.MEMBER:
-            professional = (
-                self.db.query(Professional)
-                .filter(
-                    Professional.tenant_id == current_user.tenant_id,
-                    Professional.user_id == current_user.id,
-                )
-                .first()
+            professional = self.professional_repo.get_by_user_id(
+                current_user.tenant_id, current_user.id
             )
             if professional is None:
                 return []
-            query = query.filter(AccessRequest.professional_id == professional.id)
-        return query.order_by(AccessRequest.requested_at.desc()).all()
+            return self.repo.list_requests(
+                current_user.tenant_id, professional_id=professional.id
+            )
+        return self.repo.list_requests(current_user.tenant_id)
 
     def get_request_for_user(
         self, current_user: User, request_id: uuid.UUID
     ) -> AccessRequest:
         request = self._request(current_user.tenant_id, request_id)
         if current_user.role == UserRole.MEMBER:
-            professional = (
-                self.db.query(Professional)
-                .filter(
-                    Professional.tenant_id == current_user.tenant_id,
-                    Professional.user_id == current_user.id,
-                    Professional.id == request.professional_id,
-                )
-                .first()
+            professional = self.professional_repo.get_by_user_id(
+                current_user.tenant_id, current_user.id
             )
-            if professional is None:
+            if professional is None or professional.id != request.professional_id:
                 raise LookupError("Access request not found.")
         return request
 
@@ -152,27 +145,13 @@ class AccessService:
         role_or_scope: str,
         requested_by: User,
     ) -> AccessRequest:
-        professional = (
-            self.db.query(Professional)
-            .filter(
-                Professional.id == professional_id,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        professional = self.professional_repo.get_by_id(tenant_id, professional_id)
         if professional is None:
             raise LookupError("Professional not found in current tenant.")
         if requested_by.role == UserRole.MEMBER and professional.user_id != requested_by.id:
             raise AccessLifecycleError("Members can request access only for their own professional profile.")
 
-        integration = (
-            self.db.query(Integration)
-            .filter(
-                Integration.id == integration_id,
-                Integration.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        integration = self.repo.get_integration(tenant_id, integration_id)
         if integration is None:
             raise LookupError("Integration not found in current tenant.")
 
@@ -185,8 +164,7 @@ class AccessService:
             status=AccessRequestStatus.requested,
             requested_by_user_id=requested_by.id,
         )
-        self.db.add(request)
-        self.db.flush()
+        self.repo.create_request(request)
         self._audit(
             tenant_id=tenant_id,
             actor_user_id=requested_by.id,
@@ -202,18 +180,11 @@ class AccessService:
         self, tenant_id: uuid.UUID, manager_user_id: uuid.UUID, professional_id: uuid.UUID
     ) -> bool:
         """Verify if manager supervises this professional via an active onboarding run."""
-        from app.models.onboarding import OnboardingRun
-
-        run = (
-            self.db.query(OnboardingRun)
-            .filter(
-                OnboardingRun.tenant_id == tenant_id,
-                OnboardingRun.professional_id == professional_id,
-                OnboardingRun.assigned_manager_id == manager_user_id,
-            )
-            .first()
+        return self.onboarding_repo.has_manager_assignment(
+            tenant_id=tenant_id,
+            manager_user_id=manager_user_id,
+            professional_id=professional_id,
         )
-        return run is not None
 
     def approve_request(
         self,
@@ -234,7 +205,7 @@ class AccessService:
 
         self._transition(request, AccessRequestStatus.approved, approver.id)
         request.approved_by_user_id = approver.id
-        self.db.add(
+        self.repo.create_decision(
             ApprovalDecision(
                 tenant_id=tenant_id,
                 request_type="access",
@@ -256,22 +227,8 @@ class AccessService:
         actor: User,
     ) -> tuple[AccessRequest, Dict[str, Any]]:
         request = self._request(tenant_id, request_id)
-        integration = (
-            self.db.query(Integration)
-            .filter(
-                Integration.id == request.integration_id,
-                Integration.tenant_id == tenant_id,
-            )
-            .first()
-        )
-        professional = (
-            self.db.query(Professional)
-            .filter(
-                Professional.id == request.professional_id,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        integration = self.repo.get_integration(tenant_id, request.integration_id)
+        professional = self.professional_repo.get_by_id(tenant_id, request.professional_id)
         if integration is None or professional is None:
             raise LookupError("Access request dependencies are missing.")
 
@@ -401,22 +358,8 @@ class AccessService:
                 f"Invalid access transition: {request.status.value} -> revoked."
             )
 
-        integration = (
-            self.db.query(Integration)
-            .filter(
-                Integration.id == request.integration_id,
-                Integration.tenant_id == tenant_id,
-            )
-            .first()
-        )
-        professional = (
-            self.db.query(Professional)
-            .filter(
-                Professional.id == request.professional_id,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        integration = self.repo.get_integration(tenant_id, request.integration_id)
+        professional = self.professional_repo.get_by_id(tenant_id, request.professional_id)
         if integration is None or professional is None:
             raise LookupError("Access request dependencies are missing.")
 
