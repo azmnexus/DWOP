@@ -1,8 +1,8 @@
-"""Safe GitHub mock adapter for DWOP Sprint 0.
+"""Safe Slack sandbox mock adapter for DWOP Sprint 0.
 
-The adapter deliberately performs no network I/O. It models GitHub provisioning
-semantics in process memory so the access lifecycle can be exercised safely
-before a live provider integration is approved.
+The adapter performs no network I/O. It models Slack workspace channel / usergroup
+provisioning semantics in process memory so multi-provider adapter conformance
+can be exercised safely.
 """
 from __future__ import annotations
 
@@ -17,22 +17,17 @@ from app.integrations.exceptions import (
 from app.integrations.result import AdapterResult
 
 
-class GitHubMockAdapter(BaseProviderAdapter):
-    """Process-local GitHub sandbox implementation of ``BaseProviderAdapter``.
+class SlackMockAdapter(BaseProviderAdapter):
+    """Process-local Slack sandbox implementation of ``BaseProviderAdapter``.
 
-    Provider identity remains ``github`` so domain records continue to match the
-    DWOP ERD. ``mode=sandbox_mock`` distinguishes this implementation from a
-    future live GitHub adapter.
-
-    The class-level store is intentional for Sprint 0: factory calls may create a
-    fresh adapter object for each request, while mock provision/revoke operations
-    still need to observe the same tenant-scoped sandbox state.
+    Provider identity is ``slack``. Network I/O is strictly disabled.
+    State is tenant-scoped and kept in-memory for multi-provider testing.
     """
 
-    provider_name = "github"
+    provider_name = "slack"
     mode = "sandbox_mock"
 
-    _provisioned: ClassVar[Dict[Tuple[str, str], Dict[str, Any]]] = {}
+    _members: ClassVar[Dict[Tuple[str, str], Dict[str, Any]]] = {}
 
     def _key(self, user_email: str) -> Tuple[str, str]:
         return self.tenant_id, user_email.strip().lower()
@@ -43,21 +38,20 @@ class GitHubMockAdapter(BaseProviderAdapter):
         role_or_scope: Optional[str] = None,
         **kwargs: Any,
     ) -> AdapterResult:
-        """Simulate granting GitHub access without contacting GitHub.
+        """Simulate inviting a user to a Slack workspace channel/usergroup.
 
         Per Directive Specification:
             ``provision_access(user_context: dict) -> AdapterResult``
 
-        Accepts a user_context dict (e.g. ``{"email": ..., "role": ...}``)
-        or positional ``user_email`` for backwards compatibility.
+        Accepts user_context dict or positional user_email for backwards compatibility.
         """
         if isinstance(user_context, dict):
             email = (user_context.get("email") or user_context.get("user_email") or "").strip().lower()
-            scope = (user_context.get("role") or user_context.get("role_or_scope") or user_context.get("scope") or "member").strip()
+            scope = (user_context.get("role") or user_context.get("role_or_scope") or user_context.get("channel") or user_context.get("scope") or "general").strip()
             extra_meta = {k: v for k, v in user_context.items() if k not in ("email", "role")}
         else:
             email = str(user_context).strip().lower()
-            scope = (role_or_scope or kwargs.get("role_or_scope") or "member").strip()
+            scope = (role_or_scope or kwargs.get("role_or_scope") or kwargs.get("channel") or "general").strip()
             extra_meta = kwargs
 
         if not email:
@@ -67,15 +61,16 @@ class GitHubMockAdapter(BaseProviderAdapter):
 
         # Fault injection simulation per review mandate
         if self.credentials.get("simulate_timeout") or (isinstance(user_context, dict) and user_context.get("simulate_timeout")):
-            raise ProviderConnectionTimeoutError("Simulated connection timeout to GitHub endpoint.")
+            raise ProviderConnectionTimeoutError("Simulated connection timeout to Slack endpoint.")
         if self.credentials.get("simulate_auth_error") or (isinstance(user_context, dict) and user_context.get("simulate_auth_error")):
-            raise ProviderAuthenticationError("Simulated GitHub token authentication rejection.")
+            raise ProviderAuthenticationError("Simulated Slack token authentication rejection.")
 
         metadata = {
             "mode": self.mode,
             "tenant_id": self.tenant_id,
             "user_email": email,
-            "role_or_scope": scope,
+            "channel": scope,
+            "workspace": self.credentials.get("workspace", "azmnexus-workspace"),
             **extra_meta,
         }
 
@@ -85,12 +80,12 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 status="failed",
                 provider=self.provider_name,
                 external_id=None,
-                error_message="Simulated GitHub provisioning failure.",
+                error_message="Simulated Slack provisioning failure.",
                 metadata=metadata,
             )
 
         key = self._key(email)
-        existing = self._provisioned.get(key)
+        existing = self._members.get(key)
         if existing is not None:
             return AdapterResult(
                 success=True,
@@ -101,19 +96,19 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 metadata=metadata,
             )
 
-        ext_ref = f"gh-mock-{uuid.uuid4()}"
+        ext_ref = f"slack-user-{uuid.uuid4().hex[:8]}"
         record = {
             "provider": self.provider_name,
             "mode": self.mode,
             "tenant_id": self.tenant_id,
             "user_email": email,
-            "role_or_scope": scope,
+            "channel": scope,
             "status": "provisioned",
             "external_id": ext_ref,
             "external_reference": ext_ref,
             "error_message": None,
         }
-        self._provisioned[key] = record
+        self._members[key] = record
         return AdapterResult(
             success=True,
             status="provisioned",
@@ -128,12 +123,12 @@ class GitHubMockAdapter(BaseProviderAdapter):
         external_id: str,
         **kwargs: Any,
     ) -> AdapterResult:
-        """Simulate tenant-scoped GitHub access revocation.
+        """Simulate deactivating a user from the Slack workspace.
 
         Per Directive Specification:
             ``revoke_access(external_id: str) -> AdapterResult``
 
-        Accepts provider external ID handle (e.g. ``gh-mock-...``) or user email.
+        Accepts provider external ID handle or user email.
         """
         identifier = str(external_id).strip()
         if not identifier:
@@ -141,9 +136,9 @@ class GitHubMockAdapter(BaseProviderAdapter):
 
         # Fault injection simulation per review mandate
         if self.credentials.get("simulate_timeout") or kwargs.get("simulate_timeout"):
-            raise ProviderConnectionTimeoutError("Simulated connection timeout to GitHub endpoint during revocation.")
+            raise ProviderConnectionTimeoutError("Simulated connection timeout to Slack endpoint during revocation.")
         if self.credentials.get("simulate_auth_error") or kwargs.get("simulate_auth_error"):
-            raise ProviderAuthenticationError("Simulated GitHub token authentication rejection during revocation.")
+            raise ProviderAuthenticationError("Simulated Slack token authentication rejection during revocation.")
 
         metadata = {
             "mode": self.mode,
@@ -157,16 +152,16 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 status="failed",
                 provider=self.provider_name,
                 external_id=None,
-                error_message="Simulated GitHub revocation failure.",
+                error_message="Simulated Slack revocation failure.",
                 metadata=metadata,
             )
 
         # Look up by external_id or by email in tenant
         popped = None
-        for key, record in list(self._provisioned.items()):
+        for key, record in list(self._members.items()):
             if key[0] == self.tenant_id:
                 if record.get("external_id") == identifier or key[1] == identifier.lower():
-                    popped = self._provisioned.pop(key)
+                    popped = self._members.pop(key)
                     break
 
         if popped is not None:
@@ -184,12 +179,12 @@ class GitHubMockAdapter(BaseProviderAdapter):
             status="failed",
             provider=self.provider_name,
             external_id=None,
-            error_message="User has no provisioned GitHub access.",
+            error_message="User has no active Slack membership.",
             metadata=metadata,
         )
 
     async def get_status(self) -> AdapterResult:
-        """Return deterministic sandbox health information."""
+        """Return deterministic Slack sandbox health information."""
         return AdapterResult(
             success=True,
             status="healthy",
@@ -202,4 +197,3 @@ class GitHubMockAdapter(BaseProviderAdapter):
                 "network_io": False,
             },
         )
-
