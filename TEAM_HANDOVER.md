@@ -62,6 +62,7 @@ dwop-platform/
 5. **Access Request Lifecycle Engine**: Request submission, manager approval (restricted to direct reports), admin revocation, and state transitions.
 6. **Immutable Audit Ledger & Timeline**: Append-only `audit_events` (Table 19) recording all mutations with actor, action, target, metadata, and timestamps. Filterable and exportable.
 7. **Database Fallback**: Automated fallback from PostgreSQL (`5432`) to SQLite (`dwop.db`) for offline/local development without code changes.
+8. **Repository Pattern Data Layer (`backend/app/repositories/`)**: BaseRepository generic CRUD, non-committing mutation flushes, strict multi-tenant isolation, and 8 domain repositories (`UserRepository`, `ProfessionalRepository`, `OrganizationRepository`, `ProjectRepository`, `OnboardingRepository`, `AssignmentRepository`, `AccessRepository`, `AuditRepository`) covered by the 10th automated test suite (`backend/scripts/test_dwop014_repositories.py`).
 
 ### Live & Verified Frontend (`frontend/src/`)
 1. **Diamond Glass Design System**: Glassmorphic styling, dark sapphire glowing accents, responsive CSS modules, zero ad-hoc CSS.
@@ -122,8 +123,8 @@ dwop-platform/
 - [x] Review and remediate DWOP-010/011/012.
 - [x] Complete DWOP-013 (Audit Service, Timeline API, retroactive hooks).
 - [x] Synchronize and verify Usman's frontend (DWOP-007/008) with zero build errors.
-- [ ] **DWOP-009 (Current Priority)**: Assignments & Capacity Allocation Engine (Table 9).
-  - Implement `Assignment` model, capacity validation rules (max 100% across concurrent active projects), and allocation APIs.
+- [x] **DWOP-009**: Assignments & Capacity Allocation Engine (Table 9).
+- [x] **Task P-02**: Repository Pattern Implementation (8 domain repositories, multi-tenant isolation, 10th test suite).
 
 ---
 
@@ -142,6 +143,18 @@ python scripts/seed_org_structure.py
 
 # Launch FastAPI
 uvicorn app.main:app --reload --port 8000
+
+# Run all 10 automated platform verification suites:
+python scripts/test_dwop004_auth.py
+python scripts/test_dwop005_people.py
+python scripts/test_dwop006_onboarding.py
+python scripts/test_dwop009_assignments_capacity.py
+python scripts/test_dwop010_access_lifecycle.py
+python scripts/test_dwop011_adapters.py
+python scripts/test_dwop012_github_mock_poc.py
+python scripts/test_dwop013_audit_timeline.py
+python scripts/test_default_github_integration_seed.py
+python scripts/test_dwop014_repositories.py
 ```
 API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
 
