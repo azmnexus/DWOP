@@ -6,7 +6,12 @@ from typing import Any, Dict, Iterable
 
 from sqlalchemy.orm import Session
 
-from app.integrations import AdapterResult, ProviderAdapterFactory
+from app.integrations import (
+    AdapterResult,
+    ProviderAdapterFactory,
+    ProviderAuthenticationError,
+    ProviderConnectionTimeoutError,
+)
 from app.models.access import (
     AccessRequest,
     AccessRequestStatus,
@@ -275,8 +280,33 @@ class AccessService:
 
         try:
             adapter = ProviderAdapterFactory.create_from_integration(integration)
-            result = await adapter.provision_access(
-                professional.email, request.role_or_scope
+            user_context = {
+                "email": professional.email,
+                "role": request.role_or_scope,
+                "professional_id": str(professional.id),
+                "tenant_id": str(tenant_id),
+            }
+            result = await adapter.provision_access(user_context)
+        except (ProviderConnectionTimeoutError, ProviderAuthenticationError) as exc:
+            self._transition(
+                request,
+                AccessRequestStatus.failed,
+                actor.id,
+                metadata={
+                    "provider": integration.provider.value,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "error_message": str(exc),
+                },
+            )
+            self.db.commit()
+            self.db.refresh(request)
+            return request, AdapterResult(
+                success=False,
+                status="failed",
+                provider=integration.provider.value,
+                external_id=None,
+                error_message=str(exc),
             )
         except Exception as exc:
             # Provider failures must never leave the DB-backed lifecycle stuck in
@@ -289,6 +319,7 @@ class AccessService:
                 metadata={
                     "provider": integration.provider.value,
                     "error": "Provider adapter raised an exception.",
+                    "error_message": "Provider adapter raised an exception.",
                 },
             )
             self.db.commit()
@@ -297,8 +328,8 @@ class AccessService:
                 success=False,
                 status="failed",
                 provider=integration.provider.value,
-                external_reference=None,
-                error="Provider provisioning failed.",
+                external_id=None,
+                error_message="Provider provisioning failed.",
             )
 
         is_provisioned = (
@@ -312,14 +343,14 @@ class AccessService:
             else result.get("provider", integration.provider.value)
         )
         ext_ref = (
-            result.external_reference
+            result.external_id
             if isinstance(result, AdapterResult)
-            else result.get("external_reference")
+            else (result.get("external_id") or result.get("external_reference"))
         )
         error_msg = (
-            result.error
+            result.error_message
             if isinstance(result, AdapterResult)
-            else result.get("error")
+            else (result.get("error_message") or result.get("error"))
         )
         audit_meta = (
             result.to_dict()
@@ -334,6 +365,7 @@ class AccessService:
                 actor.id,
                 metadata={
                     "provider": provider_name,
+                    "external_id": ext_ref,
                     "external_reference": ext_ref,
                     "adapter_result": audit_meta,
                 },
@@ -347,6 +379,7 @@ class AccessService:
                 metadata={
                     "provider": provider_name,
                     "error": error_msg,
+                    "error_message": error_msg,
                     "adapter_result": audit_meta,
                 },
             )
@@ -387,9 +420,16 @@ class AccessService:
         if integration is None or professional is None:
             raise LookupError("Access request dependencies are missing.")
 
+        # Determine external identifier: prefer stored external_id in request.metadata, falling back to email
+        ext_id = None
+        if request.metadata and isinstance(request.metadata, dict):
+            ext_id = request.metadata.get("external_id") or request.metadata.get("external_reference")
+        if not ext_id:
+            ext_id = professional.email
+
         try:
             adapter = ProviderAdapterFactory.create_from_integration(integration)
-            result = await adapter.revoke_access(professional.email)
+            result = await adapter.revoke_access(external_id=ext_id)
             revoked = (
                 result.success
                 if isinstance(result, AdapterResult)

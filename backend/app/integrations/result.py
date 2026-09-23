@@ -1,24 +1,64 @@
 """Typed result data structure for third-party provider adapters."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class AdapterResult:
     """Immutable, strongly-typed operational result returned by all BaseProviderAdapter implementations.
 
     Standardizes external API responses into an internal operational contract,
     shielding core domain services from provider schema volatility.
+
+    Per Implementation Directive:
+    - Primary external identifier field: `external_id`
+    - Primary error description field: `error_message`
+    - Aliases `external_reference` and `error` are maintained for full backward compatibility.
     """
 
     success: bool
     status: str
     provider: str
-    external_reference: Optional[str] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    external_id: Optional[str]
+    error_message: Optional[str]
+    metadata: Dict[str, Any]
+
+    def __init__(
+        self,
+        success: bool,
+        status: str,
+        provider: str,
+        external_id: Optional[str] = None,
+        error_message: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        *,
+        external_reference: Optional[str] = None,
+        error: Optional[str] = None,
+    ):
+        object.__setattr__(self, "success", success)
+        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "provider", provider)
+        resolved_ext_id = external_id if external_id is not None else external_reference
+        object.__setattr__(self, "external_id", resolved_ext_id)
+        resolved_error = error_message if error_message is not None else error
+        object.__setattr__(self, "error_message", resolved_error)
+        object.__setattr__(self, "metadata", metadata or {})
+
+    # -------------------------------------------------------------------------
+    # Backward Compatibility Properties (Aliased per Directive)
+    # -------------------------------------------------------------------------
+
+    @property
+    def external_reference(self) -> Optional[str]:
+        """Backward-compatible alias for ``external_id`` per Directive specification."""
+        return self.external_id
+
+    @property
+    def error(self) -> Optional[str]:
+        """Backward-compatible alias for ``error_message`` per Directive specification."""
+        return self.error_message
 
     # -------------------------------------------------------------------------
     # Transitional Compatibility Shim (DEPRECATED)
@@ -36,8 +76,12 @@ class AdapterResult:
         """Transitional dictionary subscript access.
 
         .. deprecated:: Sprint 0 (P-04)
-           Access typed attributes directly (e.g. ``result.status``, ``result.external_reference``).
+           Access typed attributes directly (e.g. ``result.status``, ``result.external_id``).
         """
+        if item in ("external_reference", "external_id"):
+            return self.external_id
+        if item in ("error", "error_message"):
+            return self.error_message
         if hasattr(self, item):
             return getattr(self, item)
         if item in self.metadata:
@@ -48,10 +92,11 @@ class AdapterResult:
         """Transitional dictionary .get() lookup.
 
         .. deprecated:: Sprint 0 (P-04)
-           Access typed attributes directly (e.g. ``result.status``, ``result.external_reference``).
+           Access typed attributes directly (e.g. ``result.status``, ``result.external_id``).
         """
         try:
-            return self[item]
+            val = self[item]
+            return val if val is not None else default
         except KeyError:
             return default
 
@@ -66,7 +111,9 @@ class AdapterResult:
             "success": self.success,
             "status": self.status,
             "provider": self.provider,
-            "external_reference": self.external_reference,
-            "error": self.error,
+            "external_id": self.external_id,
+            "external_reference": self.external_id,
+            "error_message": self.error_message,
+            "error": self.error_message,
             "metadata": dict(self.metadata),
         }

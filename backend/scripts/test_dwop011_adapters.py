@@ -31,11 +31,26 @@ from app.integrations import (
 class AlternateMockAdapter(BaseProviderAdapter):
     """Test-only provider proving consumers can swap implementations."""
 
-    async def provision_access(self, user_email: str, role_or_scope: str) -> AdapterResult:
-        return AdapterResult(success=True, status="provisioned", provider="alternate")
+    async def provision_access(
+        self,
+        user_context: Any,
+        role_or_scope: Any = None,
+        **kwargs: Any,
+    ) -> AdapterResult:
+        return AdapterResult(
+            success=True,
+            status="provisioned",
+            provider="alternate",
+            external_id="alt-mock-001",
+        )
 
-    async def revoke_access(self, user_email: str) -> AdapterResult:
-        return AdapterResult(success=True, status="revoked", provider="alternate")
+    async def revoke_access(self, external_id: str, **kwargs: Any) -> AdapterResult:
+        return AdapterResult(
+            success=True,
+            status="revoked",
+            provider="alternate",
+            external_id=str(external_id),
+        )
 
     async def get_status(self) -> AdapterResult:
         return AdapterResult(success=True, status="healthy", provider="alternate")
@@ -194,6 +209,64 @@ async def main() -> None:
     assert issubclass(ProviderConnectionTimeoutError, ProviderIntegrationError)
     assert issubclass(ProviderAuthenticationError, ProviderIntegrationError)
     print("[PASS] Typed provider exceptions conform to ProviderIntegrationError hierarchy")
+
+    # Directive Method Signatures: provision_access(user_context: dict) & revoke_access(external_id: str)
+    ctx_res = await adapter.provision_access({
+        "email": "directive.engineer@azm-nexus.com",
+        "role": "admin",
+        "user_id": "usr-001",
+    })
+    assert isinstance(ctx_res, AdapterResult)
+    assert ctx_res.success is True
+    assert ctx_res.status == "provisioned"
+    assert ctx_res.external_id is not None
+    assert ctx_res.external_reference == ctx_res.external_id
+    assert ctx_res.error_message is None
+    print("[PASS] Directive provision_access(user_context: dict) contract verified")
+
+    # Directive Revocation by external_id handle
+    ctx_revoke = await adapter.revoke_access(ctx_res.external_id)
+    assert isinstance(ctx_revoke, AdapterResult)
+    assert ctx_revoke.success is True
+    assert ctx_revoke.status == "revoked"
+    print("[PASS] Directive revoke_access(external_id: str) contract verified")
+
+    # Directive Field Names: external_id and error_message + backward-compatible aliases
+    field_test = AdapterResult(
+        success=False,
+        status="failed",
+        provider="github",
+        external_id="gh-ext-test-1",
+        error_message="Test failure message",
+    )
+    assert field_test.external_id == "gh-ext-test-1"
+    assert field_test.external_reference == "gh-ext-test-1"
+    assert field_test.error_message == "Test failure message"
+    assert field_test.error == "Test failure message"
+    assert field_test["external_id"] == "gh-ext-test-1"
+    assert field_test["external_reference"] == "gh-ext-test-1"
+    assert field_test.get("error_message") == "Test failure message"
+    assert field_test.get("error") == "Test failure message"
+    print("[PASS] Directive primary fields (external_id, error_message) and legacy aliases verified")
+
+    # Typed Exceptions: Active Fault Injection Verification
+    timeout_adapter = get_provider_adapter("github", tenant_a, {"simulate_timeout": True})
+    try:
+        await timeout_adapter.provision_access({"email": "timeout.test@azm-nexus.com", "role": "write"})
+    except ProviderConnectionTimeoutError as err:
+        assert "timeout" in str(err).lower()
+        print("[PASS] ProviderConnectionTimeoutError actively raised and caught")
+    else:
+        raise AssertionError("Expected ProviderConnectionTimeoutError was not raised.")
+
+    auth_adapter = get_provider_adapter("github", tenant_a, {"simulate_auth_error": True})
+    try:
+        await auth_adapter.provision_access({"email": "auth.test@azm-nexus.com", "role": "write"})
+    except ProviderAuthenticationError as err:
+        assert "authentication" in str(err).lower() or "token" in str(err).lower()
+        print("[PASS] ProviderAuthenticationError actively raised and caught")
+    else:
+        raise AssertionError("Expected ProviderAuthenticationError was not raised.")
 
     print("=" * 80)
     print("DWOP-011 VERIFICATION PASSED")

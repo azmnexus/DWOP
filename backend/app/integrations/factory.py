@@ -15,24 +15,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ProviderIntegrationError(Exception):
-    """Base error for provider adapter construction failures."""
-
-
-class UnsupportedProviderError(ProviderIntegrationError, ValueError):
-    """Raised when no adapter implementation is registered for a provider."""
-
-
-class InvalidAdapterConfigError(ProviderIntegrationError, ValueError):
-    """Raised when provider adapter configuration is malformed or incomplete."""
-
-
-class ProviderConnectionTimeoutError(ProviderIntegrationError):
-    """Raised when communication with an external provider times out."""
-
-
-class ProviderAuthenticationError(ProviderIntegrationError):
-    """Raised when external provider credentials or tokens are rejected."""
+from app.integrations.exceptions import (
+    InvalidAdapterConfigError,
+    ProviderAuthenticationError,
+    ProviderConnectionTimeoutError,
+    ProviderIntegrationError,
+    UnsupportedProviderError,
+)
 
 
 
