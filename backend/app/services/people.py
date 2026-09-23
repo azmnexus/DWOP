@@ -9,6 +9,7 @@ from app.models.talent import (
     ProfessionalStatus,
     AvailabilityStatus,
 )
+from app.repositories.professional import ProfessionalRepository
 from app.schemas.talent import (
     ProfessionalCreate,
     ProfessionalUpdate,
@@ -19,8 +20,9 @@ from app.services.audit import AuditService
 class PeopleService:
     """Domain service for workforce directory, intake, and talent records."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, repo: Optional[ProfessionalRepository] = None):
         self.db = db
+        self.repo = repo or ProfessionalRepository(db)
 
     def list_people(
         self,
@@ -31,25 +33,19 @@ class PeopleService:
         limit: int = 100,
     ) -> List[Professional]:
         """List all professionals scoped strictly to tenant with optional filters."""
-        query = self.db.query(Professional).filter(Professional.tenant_id == tenant_id)
-        if status_filter:
-            query = query.filter(Professional.status == status_filter)
-        if availability_filter:
-            query = query.filter(Professional.availability_status == availability_filter)
-        return query.offset(skip).limit(limit).all()
+        return self.repo.list_filtered(
+            tenant_id=tenant_id,
+            status_filter=status_filter,
+            availability_filter=availability_filter,
+            skip=skip,
+            limit=limit,
+        )
 
     def get_person_by_id(
         self, tenant_id: uuid.UUID, person_id: uuid.UUID
     ) -> Optional[Professional]:
         """Retrieve a single professional strictly scoped to the tenant."""
-        return (
-            self.db.query(Professional)
-            .filter(
-                Professional.id == person_id,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        return self.repo.get_by_id(tenant_id, person_id)
 
     def create_person(
         self,
@@ -58,14 +54,7 @@ class PeopleService:
         payload: ProfessionalCreate,
     ) -> Professional:
         """Intake / register a single professional with optional engagement and atomic audit."""
-        existing = (
-            self.db.query(Professional)
-            .filter(
-                Professional.email == payload.email,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        existing = self.repo.get_by_email(tenant_id, payload.email)
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -83,8 +72,7 @@ class PeopleService:
             availability_status=payload.availability_status,
             skills=payload.skills,
         )
-        self.db.add(professional)
-        self.db.flush()
+        self.repo.create(tenant_id, professional)
 
         if payload.engagement:
             engagement = Engagement(
@@ -96,7 +84,7 @@ class PeopleService:
                 contract_status=payload.engagement.contract_status,
                 compensation_rate=payload.engagement.compensation_rate,
             )
-            self.db.add(engagement)
+            self.repo.create_engagement(engagement)
 
         # Log immutable audit event for candidate intake inside the transaction
         AuditService(self.db).log_event(
@@ -129,14 +117,7 @@ class PeopleService:
         created_records = []
         try:
             for item in payload:
-                existing = (
-                    self.db.query(Professional)
-                    .filter(
-                        Professional.email == item.email,
-                        Professional.tenant_id == tenant_id,
-                    )
-                    .first()
-                )
+                existing = self.repo.get_by_email(tenant_id, item.email)
                 if existing:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
@@ -154,8 +135,7 @@ class PeopleService:
                     availability_status=item.availability_status,
                     skills=item.skills,
                 )
-                self.db.add(prof)
-                self.db.flush()
+                self.repo.create(tenant_id, prof)
 
                 if item.engagement:
                     eng = Engagement(
@@ -167,7 +147,7 @@ class PeopleService:
                         contract_status=item.engagement.contract_status,
                         compensation_rate=item.engagement.compensation_rate,
                     )
-                    self.db.add(eng)
+                    self.repo.create_engagement(eng)
 
                 created_records.append(prof)
 
@@ -208,16 +188,12 @@ class PeopleService:
         payload: ProfessionalUpdate,
     ) -> Professional:
         """Update professional details or status strictly scoped to tenant."""
-        person = self.get_person_by_id(tenant_id, person_id)
+        person = self.repo.update(tenant_id, person_id, payload)
         if not person:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Professional '{person_id}' not found in current tenant.",
             )
-
-        update_data = payload.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(person, key, value)
 
         self.db.commit()
         self.db.refresh(person)

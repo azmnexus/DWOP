@@ -12,6 +12,8 @@ from app.models.onboarding import (
     OnboardingRun,
     OnboardingItem,
 )
+from app.repositories.onboarding import OnboardingRepository
+from app.repositories.professional import ProfessionalRepository
 from app.schemas.onboarding import (
     OnboardingTemplateCreate,
     OnboardingRunCreate,
@@ -23,16 +25,19 @@ from app.services.audit import AuditService
 class OnboardingService:
     """Domain service for onboarding templates, runs, checklist items, and progress lifecycle."""
 
-    def __init__(self, db: Session):
+    def __init__(
+        self,
+        db: Session,
+        repo: Optional[OnboardingRepository] = None,
+        professional_repo: Optional[ProfessionalRepository] = None,
+    ):
         self.db = db
+        self.repo = repo or OnboardingRepository(db)
+        self.professional_repo = professional_repo or ProfessionalRepository(db)
 
     def list_templates(self, tenant_id: uuid.UUID) -> List[OnboardingTemplate]:
         """List all onboarding workflow templates scoped to tenant."""
-        return (
-            self.db.query(OnboardingTemplate)
-            .filter(OnboardingTemplate.tenant_id == tenant_id)
-            .all()
-        )
+        return self.repo.list_templates(tenant_id)
 
     def create_template(
         self, tenant_id: uuid.UUID, payload: OnboardingTemplateCreate
@@ -46,20 +51,18 @@ class OnboardingService:
             version=payload.version,
             is_active=payload.is_active,
         )
-        self.db.add(template)
-        self.db.flush()
-
+        items = []
         for idx, item in enumerate(payload.items):
             tmpl_item = ChecklistTemplateItem(
-                template_id=template.id,
                 title=item.title,
                 description=item.description,
                 order_index=item.order_index if item.order_index != 0 else idx + 1,
                 required_evidence_type=item.required_evidence_type,
                 default_due_days=item.default_due_days,
             )
-            self.db.add(tmpl_item)
+            items.append(tmpl_item)
 
+        self.repo.create_template(template, items)
         self.db.commit()
         self.db.refresh(template)
         return template
@@ -72,14 +75,7 @@ class OnboardingService:
     ) -> OnboardingRun:
         """Apply an onboarding template to a professional to instantiate a live run with calculated due dates."""
         # 1. Validate Professional in tenant
-        prof = (
-            self.db.query(Professional)
-            .filter(
-                Professional.id == payload.professional_id,
-                Professional.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        prof = self.professional_repo.get_by_id(tenant_id, payload.professional_id)
         if not prof:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -87,14 +83,7 @@ class OnboardingService:
             )
 
         # 2. Validate Template in tenant
-        tmpl = (
-            self.db.query(OnboardingTemplate)
-            .filter(
-                OnboardingTemplate.id == payload.template_id,
-                OnboardingTemplate.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        tmpl = self.repo.get_template(tenant_id, payload.template_id)
         if not tmpl:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -110,24 +99,24 @@ class OnboardingService:
             status="in_progress",
             progress_pct=0,
         )
-        self.db.add(run)
-        self.db.flush()
 
         # 4. Advance Professional status to 'onboarding'
         prof.status = ProfessionalStatus.onboarding
 
         # 5. Auto-generate checklist items based on template items
         today = date.today()
+        items = []
         for item in tmpl.items:
             due = today + timedelta(days=item.default_due_days)
             run_item = OnboardingItem(
-                run_id=run.id,
                 title=item.title,
                 owner_user_id=run.assigned_manager_id,
                 status="pending",
                 due_date=due,
             )
-            self.db.add(run_item)
+            items.append(run_item)
+
+        self.repo.create_run(run, items)
 
         # Log immutable audit event for onboarding run instantiation
         AuditService(self.db).log_event(
@@ -152,23 +141,13 @@ class OnboardingService:
         self, tenant_id: uuid.UUID, professional_id: Optional[uuid.UUID] = None
     ) -> List[OnboardingRun]:
         """List onboarding runs scoped to tenant, optionally filtered by professional_id."""
-        query = self.db.query(OnboardingRun).filter(OnboardingRun.tenant_id == tenant_id)
-        if professional_id:
-            query = query.filter(OnboardingRun.professional_id == professional_id)
-        return query.all()
+        return self.repo.list_runs(tenant_id, professional_id)
 
     def get_onboarding_run(
         self, tenant_id: uuid.UUID, run_id: uuid.UUID
     ) -> Optional[OnboardingRun]:
         """Retrieve details and checklist progress for an onboarding run."""
-        return (
-            self.db.query(OnboardingRun)
-            .filter(
-                OnboardingRun.id == run_id,
-                OnboardingRun.tenant_id == tenant_id,
-            )
-            .first()
-        )
+        return self.repo.get_run(tenant_id, run_id)
 
     def update_checklist_item(
         self,
@@ -199,14 +178,7 @@ class OnboardingService:
                 detail="You do not have permission to modify this onboarding checklist item.",
             )
 
-        item = (
-            self.db.query(OnboardingItem)
-            .filter(
-                OnboardingItem.id == item_id,
-                OnboardingItem.run_id == run.id,
-            )
-            .first()
-        )
+        item = self.repo.get_item(tenant_id, run.id, item_id)
         if not item:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -230,9 +202,7 @@ class OnboardingService:
         self.db.flush()
 
         # Recalculate run status and progress percentage
-        all_items = (
-            self.db.query(OnboardingItem).filter(OnboardingItem.run_id == run.id).all()
-        )
+        all_items = self.repo.list_items_for_run(run.id)
         total_count = len(all_items)
         completed_count = sum(1 for i in all_items if i.status == "completed")
         blocked_count = sum(1 for i in all_items if i.status == "blocked")
