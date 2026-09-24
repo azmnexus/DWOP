@@ -151,6 +151,7 @@ class AccessService:
         access_type,
         role_or_scope: str,
         requested_by: User,
+        commit: bool = True,
     ) -> AccessRequest:
         professional = (
             self.db.query(Professional)
@@ -194,8 +195,9 @@ class AccessService:
             target_id=request.id,
             metadata={"after": {"status": AccessRequestStatus.requested.value}},
         )
-        self.db.commit()
-        self.db.refresh(request)
+        if commit:
+            self.db.commit()
+            self.db.refresh(request)
         return request
 
     def _is_manager_for_professional(
