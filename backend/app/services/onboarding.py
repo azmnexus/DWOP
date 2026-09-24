@@ -69,6 +69,7 @@ class OnboardingService:
         tenant_id: uuid.UUID,
         operator: User,
         payload: OnboardingRunCreate,
+        commit: bool = True,
     ) -> OnboardingRun:
         """Apply an onboarding template to a professional to instantiate a live run with calculated due dates."""
         # 1. Validate Professional in tenant
@@ -144,8 +145,9 @@ class OnboardingService:
             commit=False,
         )
 
-        self.db.commit()
-        self.db.refresh(run)
+        if commit:
+            self.db.commit()
+            self.db.refresh(run)
         return run
 
     def list_onboarding_runs(

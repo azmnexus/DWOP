@@ -56,6 +56,7 @@ class PeopleService:
         tenant_id: uuid.UUID,
         actor_id: uuid.UUID,
         payload: ProfessionalCreate,
+        commit: bool = True,
     ) -> Professional:
         """Intake / register a single professional with optional engagement and atomic audit."""
         existing = (
@@ -109,8 +110,9 @@ class PeopleService:
             commit=False,
         )
 
-        self.db.commit()
-        self.db.refresh(professional)
+        if commit:
+            self.db.commit()
+            self.db.refresh(professional)
         return professional
 
     def bulk_import_people(
