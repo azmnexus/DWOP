@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.organization import Department, Team
+from app.repositories.organization import OrganizationRepository
 from app.schemas.organization import (
     DepartmentCreate,
     DepartmentUpdate,
@@ -15,31 +16,22 @@ from app.schemas.organization import (
 class OrganizationService:
     """Domain service for multi-tenant organizational structure, departments, and teams."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, repo: Optional[OrganizationRepository] = None):
         self.db = db
+        self.repo = repo or OrganizationRepository(db)
 
     # ---------------- Department Operations ----------------
     def list_departments(
         self, tenant_id: uuid.UUID, skip: int = 0, limit: int = 100
     ) -> List[Department]:
         """List all departments strictly scoped to the tenant."""
-        return (
-            self.db.query(Department)
-            .filter(Department.tenant_id == tenant_id)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        return self.repo.list_departments(tenant_id, skip=skip, limit=limit)
 
     def get_department(
         self, tenant_id: uuid.UUID, department_id: uuid.UUID
     ) -> Optional[Department]:
         """Retrieve department details strictly scoped to tenant."""
-        return (
-            self.db.query(Department)
-            .filter(Department.id == department_id, Department.tenant_id == tenant_id)
-            .first()
-        )
+        return self.repo.get_department(tenant_id, department_id)
 
     def _validate_hierarchy(
         self,
@@ -67,11 +59,7 @@ class OrganizationService:
                     detail="Circular dependency detected in department hierarchy.",
                 )
             visited.add(curr_id)
-            parent = (
-                self.db.query(Department)
-                .filter(Department.id == curr_id, Department.tenant_id == tenant_id)
-                .first()
-            )
+            parent = self.repo.get_parent_ancestor(tenant_id, curr_id)
             if not parent:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -92,7 +80,7 @@ class OrganizationService:
             manager_user_id=payload.manager_user_id,
             parent_department_id=payload.parent_department_id,
         )
-        self.db.add(dept)
+        self.repo.create_department(dept)
         self.db.commit()
         self.db.refresh(dept)
         return dept
@@ -117,12 +105,10 @@ class OrganizationService:
                 tenant_id, department_id, update_data["parent_department_id"]
             )
 
-        for key, value in update_data.items():
-            setattr(dept, key, value)
-
+        updated_dept = self.repo.update_department(tenant_id, department_id, update_data)
         self.db.commit()
-        self.db.refresh(dept)
-        return dept
+        self.db.refresh(updated_dept)
+        return updated_dept
 
     def delete_department(
         self, tenant_id: uuid.UUID, department_id: uuid.UUID
@@ -134,7 +120,7 @@ class OrganizationService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Department '{department_id}' not found in current tenant.",
             )
-        self.db.delete(dept)
+        self.repo.delete_department(tenant_id, department_id)
         self.db.commit()
 
     # ---------------- Team Operations ----------------
@@ -146,20 +132,13 @@ class OrganizationService:
         limit: int = 100,
     ) -> List[Team]:
         """List teams scoped to the tenant, optionally filtered by department."""
-        query = self.db.query(Team).filter(Team.tenant_id == tenant_id)
-        if department_id:
-            query = query.filter(Team.department_id == department_id)
-        return query.offset(skip).limit(limit).all()
+        return self.repo.list_teams(tenant_id, department_id, skip=skip, limit=limit)
 
     def get_team(
         self, tenant_id: uuid.UUID, team_id: uuid.UUID
     ) -> Optional[Team]:
         """Retrieve team details strictly scoped to tenant."""
-        return (
-            self.db.query(Team)
-            .filter(Team.id == team_id, Team.tenant_id == tenant_id)
-            .first()
-        )
+        return self.repo.get_team(tenant_id, team_id)
 
     def create_team(
         self, tenant_id: uuid.UUID, payload: TeamCreate
@@ -178,7 +157,7 @@ class OrganizationService:
             name=payload.name,
             team_lead_id=payload.team_lead_id,
         )
-        self.db.add(team)
+        self.repo.create_team(team)
         self.db.commit()
         self.db.refresh(team)
         return team
@@ -206,12 +185,10 @@ class OrganizationService:
                     detail=f"Department '{update_data['department_id']}' does not exist in current tenant.",
                 )
 
-        for key, value in update_data.items():
-            setattr(team, key, value)
-
+        updated_team = self.repo.update_team(tenant_id, team_id, update_data)
         self.db.commit()
-        self.db.refresh(team)
-        return team
+        self.db.refresh(updated_team)
+        return updated_team
 
     def delete_team(
         self, tenant_id: uuid.UUID, team_id: uuid.UUID
@@ -223,5 +200,5 @@ class OrganizationService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Team '{team_id}' not found in current tenant.",
             )
-        self.db.delete(team)
+        self.repo.delete_team(tenant_id, team_id)
         self.db.commit()
