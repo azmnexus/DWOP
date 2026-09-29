@@ -20,6 +20,11 @@ from app.models.access import (
     AuditEvent,
     Integration,
 )
+from app.core.state_machines import (
+    AccessRequestStateMachine,
+    InvalidStateTransitionError,
+    TransitionGuardError,
+)
 from app.repositories.access import AccessRepository
 from app.repositories.onboarding import OnboardingRepository
 from app.repositories.professional import ProfessionalRepository
@@ -28,21 +33,8 @@ from app.models.talent import Professional
 from app.models.user import User, UserRole
 
 
-class AccessLifecycleError(ValueError):
+class AccessLifecycleError(InvalidStateTransitionError):
     """Raised when an access lifecycle transition is not permitted."""
-
-
-_ALLOWED_TRANSITIONS = {
-    AccessRequestStatus.requested: {AccessRequestStatus.approved},
-    AccessRequestStatus.approved: {AccessRequestStatus.provisioning},
-    AccessRequestStatus.provisioning: {
-        AccessRequestStatus.provisioned,
-        AccessRequestStatus.failed,
-    },
-    AccessRequestStatus.provisioned: {AccessRequestStatus.revoked},
-    AccessRequestStatus.failed: set(),
-    AccessRequestStatus.revoked: set(),
-}
 
 
 class AccessService:
@@ -54,11 +46,13 @@ class AccessService:
         repo: Optional[AccessRepository] = None,
         professional_repo: Optional[ProfessionalRepository] = None,
         onboarding_repo: Optional[OnboardingRepository] = None,
+        state_machine: Optional[AccessRequestStateMachine] = None,
     ):
         self.db = db
         self.repo = repo or AccessRepository(db)
         self.professional_repo = professional_repo or ProfessionalRepository(db)
         self.onboarding_repo = onboarding_repo or OnboardingRepository(db)
+        self.state_machine = state_machine or AccessRequestStateMachine()
 
     def _request(self, tenant_id: uuid.UUID, request_id: uuid.UUID) -> AccessRequest:
         request = self.repo.get_request(tenant_id, request_id)
@@ -75,10 +69,18 @@ class AccessService:
         metadata: Dict[str, Any] | None = None,
     ) -> None:
         from_status = request.status
-        if to_status not in _ALLOWED_TRANSITIONS[from_status]:
+        try:
+            self.state_machine.validate_transition(
+                current_state=from_status,
+                target_state=to_status,
+                actor_user_id=actor_user_id,
+                metadata=metadata,
+            )
+        except (InvalidStateTransitionError, TransitionGuardError) as exc:
             raise AccessLifecycleError(
                 f"Invalid access transition: {from_status.value} -> {to_status.value}."
-            )
+            ) from exc
+
         request.status = to_status
         self._audit(
             tenant_id=request.tenant_id,

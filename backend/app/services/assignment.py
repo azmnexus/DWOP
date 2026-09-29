@@ -2,6 +2,11 @@ import uuid
 from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from app.core.state_machines import (
+    AssignmentStateMachine,
+    InvalidStateTransitionError,
+    TransitionGuardError,
+)
 from app.models.user import User
 from app.models.talent import Professional, ProfessionalStatus, AvailabilityStatus
 from app.models.project import Project
@@ -31,12 +36,14 @@ class AssignmentService:
         project_repo: Optional[ProjectRepository] = None,
         professional_repo: Optional[ProfessionalRepository] = None,
         org_repo: Optional[OrganizationRepository] = None,
+        state_machine: Optional[AssignmentStateMachine] = None,
     ):
         self.db = db
         self.assignment_repo = assignment_repo or AssignmentRepository(db)
         self.project_repo = project_repo or ProjectRepository(db)
         self.professional_repo = professional_repo or ProfessionalRepository(db)
         self.org_repo = org_repo or OrganizationRepository(db)
+        self.state_machine = state_machine or AssignmentStateMachine()
 
     def get_active_capacity(
         self,
@@ -216,7 +223,17 @@ class AssignmentService:
             assignment.capacity_percentage = payload.capacity_percentage
         if payload.end_date is not None:
             assignment.end_date = payload.end_date
-        if payload.status is not None:
+        if payload.status is not None and payload.status != assignment.status:
+            try:
+                self.state_machine.validate_transition(
+                    current_state=assignment.status,
+                    target_state=payload.status,
+                )
+            except (InvalidStateTransitionError, TransitionGuardError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(exc),
+                ) from exc
             assignment.status = payload.status
 
         self.db.flush()

@@ -125,6 +125,8 @@ dwop-platform/
 - [x] Synchronize and verify Usman's frontend (DWOP-007/008) with zero build errors.
 - [x] **DWOP-009**: Assignments & Capacity Allocation Engine (Table 9).
 - [x] **Task P-02**: Repository Pattern Implementation (8 domain repositories, multi-tenant isolation, 10th test suite).
+- [x] **Task P-05**: Facade Pattern Implementation (`WorkforceOnboardingFacade`, single transaction boundary, 11th test suite).
+- [x] **Task P-06**: State Machine Pattern Implementation (5 deterministic state machines, transition guards, 12th test suite).
 
 ---
 
@@ -144,7 +146,7 @@ python scripts/seed_org_structure.py
 # Launch FastAPI
 uvicorn app.main:app --reload --port 8000
 
-# Run all 10 automated platform verification suites:
+# Run all 12 automated platform verification suites:
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
@@ -155,6 +157,8 @@ python scripts/test_dwop012_github_mock_poc.py
 python scripts/test_dwop013_audit_timeline.py
 python scripts/test_default_github_integration_seed.py
 python scripts/test_dwop014_repositories.py
+python scripts/test_dwop015_facade.py
+python scripts/test_dwop016_state_machine.py
 ```
 API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
 

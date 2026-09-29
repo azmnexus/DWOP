@@ -3,7 +3,12 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-
+from app.core.state_machines import (
+    InvalidStateTransitionError,
+    OnboardingItemStateMachine,
+    OnboardingRunStateMachine,
+    TransitionGuardError,
+)
 from app.models.user import User, UserRole
 from app.models.talent import Professional, ProfessionalStatus
 from app.models.onboarding import (
@@ -30,10 +35,14 @@ class OnboardingService:
         db: Session,
         repo: Optional[OnboardingRepository] = None,
         professional_repo: Optional[ProfessionalRepository] = None,
+        item_state_machine: Optional[OnboardingItemStateMachine] = None,
+        run_state_machine: Optional[OnboardingRunStateMachine] = None,
     ):
         self.db = db
         self.repo = repo or OnboardingRepository(db)
         self.professional_repo = professional_repo or ProfessionalRepository(db)
+        self.item_state_machine = item_state_machine or OnboardingItemStateMachine()
+        self.run_state_machine = run_state_machine or OnboardingRunStateMachine()
 
     def list_templates(self, tenant_id: uuid.UUID) -> List[OnboardingTemplate]:
         """List all onboarding workflow templates scoped to tenant."""
@@ -187,8 +196,31 @@ class OnboardingService:
                 detail=f"Checklist item '{item_id}' not found in run.",
             )
 
-        # Update fields
+        # Update fields with state machine validation
         if payload.status is not None:
+            effective_blocker_reason = (
+                payload.blocker_reason
+                if payload.blocker_reason is not None
+                else item.blocker_reason
+            )
+            effective_evidence_ref = (
+                payload.evidence_ref
+                if payload.evidence_ref is not None
+                else item.evidence_ref
+            )
+            try:
+                self.item_state_machine.validate_transition(
+                    current_state=item.status,
+                    target_state=payload.status,
+                    blocker_reason=effective_blocker_reason,
+                    evidence_ref=effective_evidence_ref,
+                )
+            except (InvalidStateTransitionError, TransitionGuardError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(exc),
+                ) from exc
+
             item.status = payload.status
             if payload.status == "completed":
                 item.completed_at = datetime.now(timezone.utc)
@@ -214,15 +246,30 @@ class OnboardingService:
         else:
             run.progress_pct = 0
 
+        target_run_status = "in_progress"
         if blocked_count > 0:
-            run.status = "blocked"
+            target_run_status = "blocked"
         elif completed_count == total_count and total_count > 0:
-            run.status = "completed"
-            run.completed_at = datetime.now(timezone.utc)
-            # Advance professional to 'ready' state upon full completion
-            run.professional.status = ProfessionalStatus.ready
-        else:
-            run.status = "in_progress"
+            target_run_status = "completed"
+
+        if target_run_status != run.status:
+            try:
+                self.run_state_machine.validate_transition(
+                    current_state=run.status,
+                    target_state=target_run_status,
+                    progress_pct=run.progress_pct,
+                )
+            except (InvalidStateTransitionError, TransitionGuardError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(exc),
+                ) from exc
+
+            run.status = target_run_status
+            if target_run_status == "completed":
+                run.completed_at = datetime.now(timezone.utc)
+                # Advance professional to 'ready' state upon full completion
+                run.professional.status = ProfessionalStatus.ready
 
         # Log immutable audit event for checklist task status change
         AuditService(self.db).log_event(

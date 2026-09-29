@@ -229,6 +229,29 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 - **Automated Verification (`backend/scripts/test_dwop014_repositories.py`)**:
   - Suite 10 added, comprehensively validating generic CRUD, multi-tenant isolation (Tenant A data 100% invisible to Tenant B), Unit of Work non-committing flushes, and all 8 domain repository interfaces.
 
+### ✅ Task P-05: Facade Pattern Implementation (DWOP Engineering Execution Plan 3.5)
+- **WorkforceOnboardingFacade (`backend/app/facades/workforce.py`)**:
+  - Introduces `WorkforceOnboardingFacade` to coordinate workforce intake, template onboarding run instantiation, baseline tool access requests, and immutable audit logging within a single atomic database transaction boundary.
+  - Added optional `commit: bool = True` to `PeopleService.create_person`, `OnboardingService.start_onboarding_run`, and `AccessService.create_request` while preserving 100% default backward compatibility.
+  - Implemented `ToolAccessSpec` and automatic integration provider defaults (`github` -> `repository`, `slack` -> `channel`, `trello` -> `board`, `google_workspace`/`m365` -> `drive`).
+  - Automated verification via `backend/scripts/test_dwop015_facade.py` (Suite 11) confirming multi-domain atomic persistence, mid-transaction rollback, and cross-tenant failure isolation.
+
+### ✅ Task P-06: State Machine Pattern Implementation (DWOP Engineering Execution Plan 3.6 & 4.3)
+- **Generic Base State Machine (`backend/app/core/state_machines.py`)**:
+  - Strongly typed `BaseStateMachine[StateType]` providing declarative transition graphs, condition guards, idempotent same-state checks, and terminal state protections.
+  - Exception hierarchy inheriting from `ValueError` (`StateMachineError`, `InvalidStateTransitionError`, `TransitionGuardError`) ensuring stable HTTP 400 Bad Request API contracts.
+- **Five Domain State Machines**:
+  1. `AccessRequestStateMachine`: D-1 reconciled against live `AccessRequestStatus` enum (`requested`, `approved`, `provisioning`, `provisioned`, `failed`, `revoked`). Enforces approver identity for `approved`, external provider reference for `provisioned`, error rationale for `failed`, and terminal absorbing states for `failed` and `revoked`.
+  2. `AssignmentStateMachine`: D-2 reconciled against live `AssignmentStatus` enum (`active` -> `completed` / `reassigned`; terminal protection prevents reactivation).
+  3. `OnboardingRunStateMachine`: D-3 reconciled against live run statuses (`in_progress`, `blocked`, `completed`; `pending` reserved). Enforces 100% checklist completion guard for `completed` and allows `blocked` -> `completed` recalculation consistency.
+  4. `OnboardingItemStateMachine`: D-4 extension enforcing non-empty `blocker_reason` guard for `blocked` state and evidence checks for `completed` state.
+  5. `TicketStateMachine`: Staged in passive mode per §3 Task 3.6 & §4 Task 4.3 across 6 delivery board stages (`backlog`, `todo`, `in_progress`, `blocked`, `review`, `completed`), requiring non-empty `blocked_reason` and supervisory credentials (`ADMIN` / `MANAGER`) to complete review.
+- **Domain Service Wiring**:
+  - `AccessService`: Replaces ad-hoc `_ALLOWED_TRANSITIONS` with `AccessRequestStateMachine` and aliases `AccessLifecycleError(InvalidStateTransitionError)` to preserve exception contracts.
+  - `OnboardingService`: Enforces `OnboardingItemStateMachine` transition guards (rejecting missing `blocker_reason` with HTTP 400) and `OnboardingRunStateMachine` status recalculation.
+  - `AssignmentService`: Enforces `AssignmentStateMachine` preventing mutation of terminal assignments with HTTP 400.
+- **Automated Verification (`backend/scripts/test_dwop016_state_machine.py`)**:
+  - Suite 12 added, verifying generic FSM rules, all 5 domain state machines, condition guards, and domain service HTTP 400 integration contracts.
 
 ---
 
@@ -335,7 +358,7 @@ python scripts/seed_org_structure.py
 # 3. Start development server
 uvicorn app.main:app --reload --port 8000
 
-# 4. Run automated test suites (10 platform regression suites)
+# 4. Run automated test suites (12 platform regression suites)
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
@@ -346,6 +369,8 @@ python scripts/test_dwop012_github_mock_poc.py
 python scripts/test_dwop013_audit_timeline.py
 python scripts/test_default_github_integration_seed.py
 python scripts/test_dwop014_repositories.py
+python scripts/test_dwop015_facade.py
+python scripts/test_dwop016_state_machine.py
 ```
 
 * **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)

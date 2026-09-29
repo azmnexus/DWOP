@@ -21,6 +21,7 @@ test_emails = [
     "emmanuel.okafor@azm-nexus.com",
     "fatima.bello@azm-nexus.com",
     "chidi.eze@azm-nexus.com",
+    "unauth@test.com",
 ]
 db = SessionLocal()
 try:
@@ -36,7 +37,7 @@ assert admin_res.status_code == 200
 admin_token = admin_res.json()["access_token"]
 print("  Admin logged in successfully.")
 
-manager_res = client.post(f"{base_url}/auth/login", json={"email": "atanda.david@azm-nexus.com", "password": "LeadAtanda2026!"})
+manager_res = client.post(f"{base_url}/auth/login", json={"email": "manager@azm-nexus.com", "password": "Manager123!"})
 assert manager_res.status_code == 200
 manager_token = manager_res.json()["access_token"]
 print("  Manager logged in successfully.")
