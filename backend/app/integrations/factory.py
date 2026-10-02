@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from enum import Enum
+from threading import RLock
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, Type
 from uuid import UUID
 
@@ -29,6 +30,7 @@ class ProviderAdapterFactory:
     """Registry-backed constructor for tenant-scoped provider adapters."""
 
     _registry: ClassVar[Dict[str, Type[BaseProviderAdapter]]] = {}
+    _registry_lock: ClassVar[RLock] = RLock()
 
     @staticmethod
     def _normalize_provider(provider: IntegrationProvider | str) -> str:
@@ -67,15 +69,18 @@ class ProviderAdapterFactory:
         if not isinstance(adapter_cls, type) or not issubclass(adapter_cls, BaseProviderAdapter):
             # Preserve the public error type used by the original registration API.
             raise TypeError("Provider adapters must inherit from BaseProviderAdapter.")
-        cls._registry[normalized] = adapter_cls
+        with cls._registry_lock:
+            cls._registry[normalized] = adapter_cls
 
     @classmethod
     def is_supported(cls, provider: IntegrationProvider | str) -> bool:
         """Return whether an adapter is registered without raising for unknown providers."""
         try:
-            return cls._normalize_provider(provider) in cls._registry
+            normalized = cls._normalize_provider(provider)
         except InvalidAdapterConfigError:
             return False
+        with cls._registry_lock:
+            return normalized in cls._registry
 
     @classmethod
     def create_adapter(
@@ -88,7 +93,8 @@ class ProviderAdapterFactory:
         normalized_provider = cls._normalize_provider(provider)
         normalized_tenant_id = cls._normalize_tenant_id(tenant_id)
         normalized_credentials = cls._normalize_credentials(credentials)
-        adapter_cls = cls._registry.get(normalized_provider)
+        with cls._registry_lock:
+            adapter_cls = cls._registry.get(normalized_provider)
         if adapter_cls is None:
             raise UnsupportedProviderError("Provider adapter is not supported.")
         return adapter_cls(tenant_id=normalized_tenant_id, credentials=normalized_credentials)

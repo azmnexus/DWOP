@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import List, Union
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,4 +40,11 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+@lru_cache()
+def get_settings() -> Settings:
+    """Return the one application settings instance for this process."""
+    return Settings()
+
+
+# Preserve the existing import contract while routing it through the cached provider.
+settings = get_settings()
