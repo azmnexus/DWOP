@@ -1,10 +1,8 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.api.deps import get_audit_service, require_admin
 from app.models.user import User
 from app.schemas.audit import AuditEventRead
 from app.services.audit import AuditService
@@ -20,12 +18,12 @@ def list_audit_logs(
     skip: int = Query(0, ge=0, description="Offset pagination"),
     limit: int = Query(50, ge=1, le=100, description="Number of events to retrieve"),
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: AuditService = Depends(get_audit_service),
 ):
     """Retrieve activity timeline and audit log events strictly scoped to current tenant.
     Requires ADMIN role. Ordered by timestamp descending.
     """
-    return AuditService(db).list_logs(
+    return service.list_logs(
         tenant_id=admin_user.tenant_id,
         actor_user_id=actor_user_id,
         action=action,
@@ -38,10 +36,10 @@ def list_audit_logs(
 @router.get("/export")
 def export_audit_logs(
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: AuditService = Depends(get_audit_service),
 ):
     """Export compliance audit logs for the current tenant."""
-    events = AuditService(db).list_logs(
+    events = service.list_logs(
         tenant_id=admin_user.tenant_id,
         limit=1000,
     )

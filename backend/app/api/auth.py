@@ -2,10 +2,14 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
-from app.core.config import settings
-from app.core.database import get_db
-from app.core.dependencies import get_current_active_user
+
+from app.api.deps import (
+    get_audit_service,
+    get_current_active_user,
+    get_settings,
+    get_user_repository,
+    Settings,
+)
 from app.core.security import verify_password, create_access_token
 from app.models.user import User
 from app.repositories.user import UserRepository
@@ -33,7 +37,9 @@ class TokenResponse(BaseModel):
 @router.post("/login", response_model=TokenResponse)
 async def login(
     request: Request,
-    db: Session = Depends(get_db),
+    user_repo: UserRepository = Depends(get_user_repository),
+    audit_service: AuditService = Depends(get_audit_service),
+    settings: Settings = Depends(get_settings),
 ):
     """Authenticate user with email and password against database.
     Supports both JSON payload and OAuth2 Form (for Swagger UI Authorize button).
@@ -61,7 +67,7 @@ async def login(
         )
 
     # Lookup user by email in database via UserRepository
-    user = UserRepository(db).get_by_email_global(str(email))
+    user = user_repo.get_by_email_global(str(email))
     if not user or not verify_password(str(password), user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -84,7 +90,7 @@ async def login(
     )
 
     # Log immutable audit event for successful authentication
-    AuditService(db).log_event(
+    audit_service.log_event(
         tenant_id=user.tenant_id,
         actor_user_id=user.id,
         action="auth.login_successful",
@@ -116,6 +122,7 @@ def get_current_user_profile(
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_access_token(
     current_user: User = Depends(get_current_active_user),
+    settings: Settings = Depends(get_settings),
 ):
     """Generate a refreshed access token for the authenticated user session."""
     access_token = create_access_token(
@@ -138,10 +145,10 @@ def refresh_access_token(
 @router.post("/logout")
 def logout(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """Log out current user and record audit logout event."""
-    AuditService(db).log_event(
+    audit_service.log_event(
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id,
         action="auth.logout",
