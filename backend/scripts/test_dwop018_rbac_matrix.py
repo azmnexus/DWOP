@@ -402,7 +402,7 @@ try:
 
     resolver = ScopeResolver(db)
 
-    grant = resolver.derive(lead_a)
+    grant = resolver.derive(lead_a, tenant_id)
     ok(
         "Team lead derives the 'team_lead' scope from Team.team_lead_id",
         grant.is_team_lead and grant.scopes == frozenset({Scope.TEAM_LEAD}),
@@ -415,10 +415,10 @@ try:
     )
     ok(
         "A user leading two teams receives both bindings",
-        tuple(ScopeResolver(db).derive(lead_b).lead_team_ids) == (team_beta,),
+        tuple(ScopeResolver(db).derive(lead_b, tenant_id).lead_team_ids) == (team_beta,),
     )
 
-    non_lead = resolver.derive(outsider)
+    non_lead = resolver.derive(outsider, tenant_id)
     ok(
         "A user with no team_lead_id receives no scope",
         not non_lead.is_team_lead
@@ -427,12 +427,37 @@ try:
     )
     ok(
         "Team membership alone never confers scope",
-        not resolver.derive(plain).is_team_lead,
+        not resolver.derive(plain, tenant_id).is_team_lead,
+    )
+
+    # A team the user leads in ANOTHER tenant must never reach the claim.
+    foreign_tenant_id = uuid.uuid4()
+    foreign_team_id = uuid.uuid4()
+    db.add(Tenant(id=foreign_tenant_id, name="Foreign Tenant", slug=f"o02-foreign-{foreign_tenant_id.hex[:8]}"))
+    db.add(
+        Team(
+            id=foreign_team_id,
+            tenant_id=foreign_tenant_id,
+            department_id=department_id,
+            name="Foreign Team",
+            team_lead_id=lead_a,
+        )
+    )
+    db.commit()
+    ok(
+        "A cross-tenant team never enters the lead_teams claim",
+        foreign_team_id not in resolver.derive(lead_a, tenant_id).lead_team_ids
+        and resolver.derive(lead_a, tenant_id).is_team_lead,
+        "(derivation is tenant-scoped, so the foreign team is invisible)",
+    )
+    ok(
+        "Deriving against the foreign tenant does surface that team",
+        foreign_team_id in resolver.derive(lead_a, foreign_tenant_id).lead_team_ids,
     )
     ok(
         "Unknown or missing user resolves to the empty grant (fail closed)",
-        resolve_scope_grant(db, None) == EMPTY_SCOPE_GRANT
-        and resolve_scope_grant(db, uuid.uuid4()) == EMPTY_SCOPE_GRANT,
+        resolve_scope_grant(db, None, tenant_id) == EMPTY_SCOPE_GRANT
+        and resolve_scope_grant(db, uuid.uuid4(), tenant_id) == EMPTY_SCOPE_GRANT,
     )
 
     lead_a_row = db.query(User).filter(User.id == lead_a).one()
@@ -533,7 +558,7 @@ try:
     # ---- scope revocation on reassignment --------------------------------
     db.query(Team).filter(Team.id == team_alpha).one().team_lead_id = lead_b
     db.commit()
-    refreshed = ScopeResolver(db).derive(lead_a)
+    refreshed = ScopeResolver(db).derive(lead_a, tenant_id)
     ok(
         "Reassigning Team.team_lead_id removes the derived scope on re-issuance",
         not refreshed.is_team_lead and refreshed.lead_team_ids == (),

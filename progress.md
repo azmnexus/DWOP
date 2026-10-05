@@ -311,6 +311,7 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 #### Phase 2 — Team Lead as a Derived Scope (`backend/app/core/scopes.py` — NEW)
 - **Team Lead authority is a derived scope, not a fourth global role.** It is absent from `UserRole` (`ADMIN`, `MANAGER`, `MEMBER` only), is never written to `users.role`, cannot be self-assigned, and required **zero schema migrations** — `teams.team_lead_id` already existed.
 - `ScopeResolver` derives the `team_lead` scope and its `lead_teams` bindings from `Team.team_lead_id` at token issuance (`POST /auth/login`, `POST /auth/refresh`); the `ScopeResolver`/`ScopeGrant` result is frozen, typed, and serialised into the signed JWT as `scopes` and `lead_teams` claims.
+- Derivation is **tenant-relative** — `Team.tenant_id` is filtered, so a team led in another workspace can never enter the signed binding — and team IDs are emitted in stable sorted order, making the claim byte-identical across issuances.
 - Resolution stays **stateless and in-memory** at authorization time — the claims are authoritative, so a request costs no extra database round-trip.
 
 #### Phase 3 — Engine & Enforcement Synchronisation (`app/core/policy.py`, `dependencies.py`, `services/`)
@@ -321,11 +322,11 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 - `GET /api/v1/auth/policy` now separates `permissions` (role) from `effective_permissions` (role ∪ scope) and publishes `scopes`, `lead_teams`, `is_team_lead`, `scope_boundaries_enforced` and `authority_reference`; `TokenResponse` mirrors the scope claims.
 
 #### Phase 4 — Documentation Locked To Code As A Build Gate (`test_dwop018_rbac_matrix.py` — NEW)
-- Suite 14 added: **57/57 assertions green**. It parses every capability table in `docs/rbac-matrix.md`, compares each granted column against the engine tables, asserts the reverse direction (no unpublished permission, no unresolvable permission), and fails the build on any divergence — so the document cannot drift from the code silently.
-- Also verified: strict nesting and counts, no `*` sentinel grant, Team Lead inexpressible as a stored role, identifier-format conformance, legacy alias resolution, scope derivation from `Team.team_lead_id`, own-team allow / foreign-team deny / cross-tenant deny / no-team fail-closed, claim tamper rejection, and refresh-time propagation of scope loss.
+- Suite 14 added: **59/59 assertions green**. It parses every capability table in `docs/rbac-matrix.md`, compares each granted column against the engine tables, asserts the reverse direction (no unpublished permission, no unresolvable permission), and fails the build on any divergence — so the document cannot drift from the code silently.
+- Also verified: strict nesting and counts, no `*` sentinel grant, Team Lead inexpressible as a stored role, identifier-format conformance, legacy alias resolution, scope derivation from `Team.team_lead_id`, tenant-scoped derivation (a cross-tenant team never enters the claim), own-team allow / foreign-team deny / cross-tenant deny / no-team fail-closed, claim tamper rejection, and refresh-time propagation of scope loss.
 
 #### Phase 5 — Regression, Governance & Packaging
-- **All 14 verification suites green** (`test_default_github_integration_seed`, Suites 1–14; **198 measured assertions** across the suites that report `[PASS]` counters), plus `alembic upgrade head → downgrade -1 → upgrade head` verified against a clean database.
+- **All 14 verification suites green** (`test_default_github_integration_seed`, Suites 1–14; **200 measured assertions** across the suites that report `[PASS]` counters), plus `alembic upgrade head → downgrade -1 → upgrade head` verified against a clean database.
 - Fixed a latent test-isolation defect in `test_dwop013_audit_timeline.py`: the integration lookup was unscoped (`db.query(Integration).first()`), so it resolved an integration belonging to whichever tenant happened to be seeded first and failed whenever the database held more than one tenant. It is now tenant-scoped.
 - ADR-002 amended (§6.1) and this report updated to **v1.4**; deliverables packaged for formal **Khalifa security review** and Gate 2 clearance.
 

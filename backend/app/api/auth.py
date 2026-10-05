@@ -148,7 +148,7 @@ async def login(
     permissions = policy_engine.permissions_for_token(role_value)
     # Derived scopes resolved from Team.team_lead_id. No fourth global role is
     # created or stored: this is computed authority bound to specific teams.
-    scope_grant = ScopeResolver(db).derive(user.id)
+    scope_grant = ScopeResolver(db).derive(user.id, user.tenant_id)
 
     # Issue JWT embedding the signed role, tenant_id, permissions and scope claims
     response = _issue_token_response(
@@ -229,7 +229,7 @@ def refresh_access_token(
         else str(current_user.role)
     )
     permissions = policy_engine.permissions_for_token(role_value)
-    scope_grant = ScopeResolver(db).derive(current_user.id)
+    scope_grant = ScopeResolver(db).derive(current_user.id, current_user.tenant_id)
     return _issue_token_response(
         db=db,
         user=current_user,

@@ -207,7 +207,8 @@ There is **no fourth global role**. Specifically:
 |---|---|
 | Source of truth | `Team.team_lead_id` |
 | Derivation point | Token issuance (`POST /auth/login`) and re-issuance (`POST /auth/refresh`), via `ScopeResolver` in `backend/app/core/scopes.py` |
-| Emission | Signed `scopes: ["team_lead"]` and `lead_teams: ["<team-uuid>", …]` JWT claims |
+| Tenant scoping | Derivation is **tenant-relative**: only teams whose `Team.tenant_id` matches the caller's workspace can enter the `lead_teams` binding. A team the user leads in another tenant is invisible to the claim, so a signed token never carries an identifier from outside the caller's workspace. |
+| Emission | Signed `scopes: ["team_lead"]` and `lead_teams: ["<team-uuid>", …]` JWT claims, emitted in stable sorted order so the claim is byte-identical across issuances for the same derivation |
 | Evaluation | In-memory only, in `PolicyEngine.authorize` — no database access |
 | Propagation | On the holder's next token issuance; ≤ 1 access-token lifetime otherwise |
 
@@ -227,6 +228,8 @@ Team Lead authority is **always narrower** than the Manager authority it overlap
 
 - A `team_lead` grant is evaluated **only** when the target resource's team appears
   in the holder's signed `lead_teams` claim.
+- Derivation is **tenant-relative**, so the `lead_teams` binding can never contain a
+  team from outside the caller's workspace.
 - A team lead who does not lead team X is denied on team X even with a valid,
   unexpired token.
 - The tenant boundary is evaluated **before** the scope boundary. A team lead can

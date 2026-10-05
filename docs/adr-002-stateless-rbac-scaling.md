@@ -294,6 +294,11 @@ client-supplied header, query parameter or body field participates in an authori
 decision. Losing the scope by clearing `team_lead_id` propagates on the holder's next
 token issuance, bounded by the access-token lifetime.
 
+Derivation is **tenant-relative**: `ScopeResolver` filters on `Team.tenant_id`, so a team
+the user leads in another workspace can never enter the signed `lead_teams` binding. Team
+IDs are emitted in stable sorted order, making the claim byte-identical across issuances
+for the same derivation.
+
 **Documentation as a build gate.** `docs/rbac-matrix.md` is the single source of truth
 for the matrix. Suite 18 parses every capability table in the document, compares each
 granted column against `POLICY_MATRIX` / `SCOPE_MATRIX`, and asserts the reverse

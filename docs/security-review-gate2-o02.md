@@ -62,7 +62,9 @@ it keeps the authority resource-bound and reversible in a single write.
 
 **Evidence.** `test_dwop018_rbac_matrix.py` asserts `UserRole` has exactly three
 members, that derivation never mutates `users.role`, and that clearing
-`team_lead_id` removes the scope on the next issuance.
+`team_lead_id` removes the scope on the next issuance. Derivation is tenant-relative
+(`Team.tenant_id` filter), so a team led in another workspace cannot enter the signed
+`lead_teams` binding — asserted directly by test.
 
 **Reviewer question.** Is a derived scope an acceptable substitute for a stored
 role for audit purposes, given that the derivation source (`Team.team_lead_id`)
@@ -171,12 +173,12 @@ than by a separate policy-as-code tool?
 |---|---|
 | Suites 1–12 (pre-existing) | green |
 | Suite 13 `test_dwop017_stateless_rbac.py` | 41/41 |
-| Suite 14 `test_dwop018_rbac_matrix.py` | 57/57 |
+| Suite 14 `test_dwop018_rbac_matrix.py` | 59/59 |
 | `test_default_github_integration_seed.py` | green |
 | `alembic upgrade head → downgrade -1 → upgrade head` | verified on a clean database |
 | Measured policy resolution | ~17 µs per evaluation (unchanged from O-01) |
 
-**198 measured assertions** across the suites reporting `[PASS]` counters.
+**200 measured assertions** across the suites reporting `[PASS]` counters.
 
 ---
 

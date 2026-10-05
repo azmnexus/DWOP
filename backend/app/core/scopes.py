@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import FrozenSet, Sequence, Tuple
+from typing import FrozenSet, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -74,19 +74,35 @@ class ScopeResolver:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def list_led_team_ids(self, user_id: uuid.UUID) -> Tuple[uuid.UUID, ...]:
-        """Team IDs whose ``team_lead_id`` points at this user."""
+    def list_led_team_ids(
+        self, user_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> Tuple[uuid.UUID, ...]:
+        """Team IDs in ``tenant_id`` whose ``team_lead_id`` points at this user.
+
+        Tenant scoping is deliberate: a signed claim must never carry an
+        identifier the holder has no business holding. Without the filter, a
+        cross-tenant data inconsistency would leak a foreign team UUID into the
+        ``lead_teams`` claim. Ordering is stable so the signed claim is
+        byte-identical across issuances for the same derivation.
+        """
         rows = self.db.execute(
-            select(Team.id).where(Team.team_lead_id == user_id)
+            select(Team.id)
+            .where(Team.team_lead_id == user_id, Team.tenant_id == tenant_id)
+            .order_by(Team.id)
         ).scalars()
         return tuple(row for row in rows if row is not None)
 
-    def derive(self, user_id: uuid.UUID) -> ScopeGrant:
-        """Resolve every derived scope currently held by ``user_id``."""
-        if user_id is None:
+    def derive(self, user_id: uuid.UUID, tenant_id: uuid.UUID) -> ScopeGrant:
+        """Resolve every derived scope currently held by ``user_id``.
+
+        ``tenant_id`` is required: scope derivation is always tenant-relative,
+        and an unscoped derivation would emit identifiers from outside the
+        caller's workspace.
+        """
+        if user_id is None or tenant_id is None:
             return EMPTY_SCOPE_GRANT
 
-        led_teams = self.list_led_team_ids(user_id)
+        led_teams = self.list_led_team_ids(user_id, tenant_id)
         scopes: set[str] = set()
         if led_teams:
             # Team Lead authority exists only as long as Team.team_lead_id says so.
@@ -94,13 +110,8 @@ class ScopeResolver:
         return ScopeGrant(scopes=frozenset(scopes), lead_team_ids=led_teams)
 
 
-def resolve_scope_grant(db: Session, user_id: uuid.UUID) -> ScopeGrant:
+def resolve_scope_grant(
+    db: Session, user_id: uuid.UUID, tenant_id: uuid.UUID
+) -> ScopeGrant:
     """Convenience wrapper around :class:`ScopeResolver`."""
-    return ScopeResolver(db).derive(user_id)
-
-
-def lead_team_ids_as_sequence(
-    grant: ScopeGrant,
-) -> Sequence[uuid.UUID]:
-    """Bound resource identifiers for the grant, as a plain sequence."""
-    return grant.lead_team_ids
+    return ScopeResolver(db).derive(user_id, tenant_id)
