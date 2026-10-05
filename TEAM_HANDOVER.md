@@ -114,6 +114,7 @@ dwop-platform/
 - [x] **DWOP-010**: Access Request Lifecycle backend (**Done, Reviewed & Remediated**).
 - [x] **DWOP-011**: Provider Adapter Framework (`BaseProviderAdapter`, factory) (**Done & Merged**).
 - [x] **DWOP-012**: GitHub Sandbox Mock POC (**Done & Merged**).
+- [x] **Task P-07**: Scoped Singleton Pattern (`@lru_cache` settings, provider registry lock, 13th test suite).
 - [ ] **Next Task (Slack / Google Workspace Mock Adapters)**:
   - Implement `SlackMockAdapter` in `backend/app/integrations/slack.py` extending `BaseProviderAdapter`.
   - Support `channels:write`, `users:read` mock actions with idempotent invites and revocations.
@@ -127,6 +128,7 @@ dwop-platform/
 - [x] **Task P-02**: Repository Pattern Implementation (8 domain repositories, multi-tenant isolation, 10th test suite).
 - [x] **Task P-05**: Facade Pattern Implementation (`WorkforceOnboardingFacade`, single transaction boundary, 11th test suite).
 - [x] **Task P-06**: State Machine Pattern Implementation (5 deterministic state machines, transition guards, 12th test suite).
+- [x] **Task P-08**: Dependency Injection Pattern Implementation (provider hub `app.api.deps`, universal router refactoring with `Depends(...)`, 14th test suite, authored `docs/patterns.md`).
 
 ---
 
@@ -146,7 +148,7 @@ python scripts/seed_org_structure.py
 # Launch FastAPI
 uvicorn app.main:app --reload --port 8000
 
-# Run all 12 automated platform verification suites:
+# Run all 14 automated platform verification suites:
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
@@ -159,6 +161,8 @@ python scripts/test_default_github_integration_seed.py
 python scripts/test_dwop014_repositories.py
 python scripts/test_dwop015_facade.py
 python scripts/test_dwop016_state_machine.py
+python scripts/test_dwop017_singleton.py
+python scripts/test_dwop018_dependency_injection.py
 ```
 API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
 
