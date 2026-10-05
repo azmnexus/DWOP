@@ -69,13 +69,13 @@ print("\n[TEST 1] PolicyEngine resolves permissions from application memory only
 
 ok(
     "MEMBER matrix is self-service scoped only",
-    not policy_engine.has_permission("MEMBER", Permission.DEPARTMENT_MANAGE)
+    not policy_engine.has_permission("MEMBER", Permission.DEPARTMENTS_MANAGE)
     and not policy_engine.has_permission("MEMBER", Permission.AUDIT_READ),
 )
 ok(
     "MANAGER matrix inherits MEMBER capabilities",
     MEMBER_PERMISSIONS.issubset(MANAGER_PERMISSIONS)
-    and policy_engine.has_permission("MANAGER", Permission.ASSIGNMENT_ALLOCATE),
+    and policy_engine.has_permission("MANAGER", Permission.ASSIGNMENTS_ALLOCATE),
 )
 ok(
     "ADMIN matrix inherits MANAGER capabilities",
@@ -89,8 +89,8 @@ ok(
 )
 ok(
     "Role resolution is case-insensitive",
-    policy_engine.has_permission("admin", Permission.USER_MANAGE)
-    and policy_engine.has_permission(UserRole.ADMIN, Permission.USER_MANAGE),
+    policy_engine.has_permission("admin", Permission.USERS_MANAGE)
+    and policy_engine.has_permission(UserRole.ADMIN, Permission.USERS_MANAGE),
 )
 
 # Sub-millisecond resolution budget.
@@ -99,7 +99,7 @@ start = time.perf_counter()
 for _ in range(iterations):
     policy_engine.authorize(
         {"sub": str(uuid.uuid4()), "tenant_id": str(uuid.uuid4()), "role": "MANAGER"},
-        Permission.ASSIGNMENT_ALLOCATE,
+        Permission.ASSIGNMENTS_ALLOCATE,
         resource_tenant_id=uuid.uuid4(),
     )
 elapsed_ms = (time.perf_counter() - start) * 1000
@@ -134,7 +134,7 @@ ok(
 try:
     policy_engine.enforce(
         {"sub": "x", "tenant_id": str(uuid.uuid4()), "role": "MEMBER"},
-        Permission.DEPARTMENT_MANAGE,
+        Permission.DEPARTMENTS_MANAGE,
         resource_tenant_id=uuid.uuid4(),
     )
     raise AssertionError("enforce() should have raised PolicyDeniedError")

@@ -29,6 +29,7 @@ from app.core.policy import (
     PolicyDeniedError,
     PolicyEngine,
     PolicySubject,
+    Scope,
     policy_engine,
 )
 from app.core.security import decode_access_token
@@ -163,7 +164,16 @@ def get_current_policy_subject(
 def require_permissions(*permissions: str) -> Callable[..., User]:
     """Build a dependency requiring *all* of the given permissions.
 
-    Evaluated entirely in memory against the signed JWT claims.
+    Evaluated entirely in memory against the signed JWT claims. Authority may be
+    satisfied by the caller's role or by a derived scope (for example
+    ``team_lead``).
+
+    The resource binding of a derived scope is deliberately *not* inferred from
+    request input here. No client-supplied header, query parameter or body field
+    participates in an authorization decision. When a permission is held only by
+    a resource-bound scope, this guard fails closed and the endpoint must resolve
+    the resource first and call :func:`enforce_scope_boundary` with the trusted
+    team identifier it loaded from the database.
     """
     required: Sequence[str] = tuple(permissions)
 
@@ -259,31 +269,55 @@ def enforce_tenant_boundary(
     return subject
 
 
+def enforce_scope_boundary(
+    resource_team_id: uuid.UUID,
+    scope: str = Scope.TEAM_LEAD,
+    subject: PolicySubject = Depends(get_current_policy_subject),
+) -> PolicySubject:
+    """Dependency enforcing that a resource falls inside a derived scope.
+
+    Call this with a team identifier the endpoint has already loaded from the
+    database, never with a value taken straight from the request. Team Lead
+    authority is resource-bound: holding the ``team_lead`` scope is necessary but
+    not sufficient, the target team must also appear in the caller's signed
+    ``lead_teams`` binding.
+    """
+    scope_name = str(scope).strip().lower()
+    decision = policy_engine.check_scope_boundary(
+        subject, scope_name, resource_team_id, permission=f"scope:{scope_name}"
+    )
+    if not decision.allowed:
+        raise _deny(decision.reason)
+    return subject
+
+
 #: Pre-composed guards for the endpoint-level authority used across the API.
-require_department_admin = require_permissions(Permission.DEPARTMENT_MANAGE)
-require_team_admin = require_permissions(Permission.TEAM_MANAGE)
-require_client_admin = require_permissions(Permission.CLIENT_MANAGE)
-require_project_admin = require_permissions(Permission.PROJECT_MANAGE)
-require_bulk_import = require_permissions(Permission.PROFESSIONAL_BULK_IMPORT)
-require_intake = require_permissions(Permission.PROFESSIONAL_INTAKE)
-require_template_author = require_permissions(Permission.ONBOARDING_TEMPLATE_MANAGE)
-require_run_creator = require_permissions(Permission.ONBOARDING_RUN_CREATE)
-require_allocator = require_permissions(Permission.ASSIGNMENT_ALLOCATE)
-require_assignment_update = require_permissions(Permission.ASSIGNMENT_UPDATE)
-require_access_approver = require_permissions(Permission.ACCESS_REQUEST_APPROVE)
-require_access_provisioner = require_permissions(Permission.ACCESS_REQUEST_PROVISION)
-require_access_revocer = require_permissions(Permission.ACCESS_REQUEST_REVOKE)
-require_integration_admin = require_permissions(Permission.ACCESS_INTEGRATION_MANAGE)
+require_department_admin = require_permissions(Permission.DEPARTMENTS_MANAGE)
+require_team_admin = require_permissions(Permission.TEAMS_MANAGE)
+require_client_admin = require_permissions(Permission.CLIENTS_MANAGE)
+require_project_admin = require_permissions(Permission.PROJECTS_MANAGE)
+require_bulk_import = require_permissions(Permission.PEOPLE_BULK_IMPORT)
+require_intake = require_permissions(Permission.PEOPLE_INTAKE)
+require_template_author = require_permissions(Permission.ONBOARDING_TEMPLATES_MANAGE)
+require_run_creator = require_permissions(Permission.ONBOARDING_RUNS_CREATE)
+require_allocator = require_permissions(Permission.ASSIGNMENTS_ALLOCATE)
+require_assignment_update = require_permissions(Permission.ASSIGNMENTS_UPDATE)
+require_access_approver = require_permissions(Permission.ACCESS_APPROVE)
+require_access_provisioner = require_permissions(Permission.ACCESS_PROVISION)
+require_access_revocer = require_permissions(Permission.ACCESS_REVOKE)
+require_integration_admin = require_permissions(Permission.INTEGRATIONS_MANAGE)
 require_audit_reader = require_permissions(Permission.AUDIT_READ)
 require_audit_exporter = require_permissions(Permission.AUDIT_EXPORT)
-require_user_admin = require_permissions(Permission.USER_MANAGE)
+require_user_admin = require_permissions(Permission.USERS_MANAGE)
 
 __all__ = [
     "CLAIMS_ATTRIBUTE",
     "Permission",
     "PolicyEngine",
     "PolicySubject",
+    "Scope",
     "claims_for",
+    "enforce_scope_boundary",
     "enforce_tenant_boundary",
     "get_current_active_user",
     "get_current_policy_subject",

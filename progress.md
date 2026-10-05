@@ -1,9 +1,9 @@
 # DWOP Platform — Sprint 0 Engineering & Architecture Progress Report
 
-**Document Version**: 1.3 (Sprint 0 / Task O-01 Stateless RBAC Policy Engine — ADR-002)  
+**Document Version**: 1.4 (Sprint 0 / Task O-02 RBAC Permission Matrix Publication — ADR-002 Amendment)  
 **Organization**: AZM Nexus Limited  
 **System**: Digital Workforce Operations Platform (DWOP)  
-**Status**: Completed through Ticket DWOP-009 (including DWOP-010 through DWOP-013, and DWOP-007/008 frontend), Tasks P-01 through P-06, and **Gate 2 (Task O-01 Stateless RBAC Policy Engine)**  
+**Status**: Completed through Ticket DWOP-009 (including DWOP-010 through DWOP-013, and DWOP-007/008 frontend), Tasks P-01 through P-06, **Gate 2 (Task O-01 Stateless RBAC Policy Engine)** and **Task O-02 (RBAC Permission Matrix Publication + Team Lead Derived Scope)**  
 
 
 ---
@@ -35,6 +35,8 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 | **ORM / Migrations** | SQLAlchemy 2.0 + Alembic | Strict type annotations, declarative mappings, versioned migrations |
 | **Security & Auth** | `python-jose` (JWT) + `bcrypt` | Stateless bearer token authentication, secure password hashing |
 | **Authorization (RBAC)** | In-Memory Policy Matrix (`app/core/policy.py`) | Stateless, sub-millisecond permission resolution from signed JWT claims, zero infrastructure dependencies ([ADR-002](file:///c:/Users/k3238/Documents/GitHub/DWOP/docs/adr-002-stateless-rbac-scaling.md)) |
+| **Authorization Matrix** | Published, build-verified matrix ([`docs/rbac-matrix.md`](file:///c:/Users/k3238/Documents/GitHub/DWOP/docs/rbac-matrix.md)) | Single authoritative audit-ready permission catalogue; locked to the engine by Suite 14 |
+| **Derived scopes** | `ScopeResolver` over `Team.team_lead_id` (`app/core/scopes.py`) | Team-lead authority as resource-bound scope — no fourth role, no migration |
 | **Multi-Tenancy** | Python `contextvars.ContextVar` | Request-isolated tenant scoping via `TenantContextMiddleware` |
 | **Frontend UI** | Next.js 14 + React + TypeScript | App Router, Lucide icons, responsive enterprise administration portal |
 
@@ -266,7 +268,7 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 
 #### Phase 2 — In-Memory Policy Engine (`backend/app/core/policy.py` — NEW)
 - **`PolicyEngine` class** evaluating authorization strictly in application memory. It accepts no database session, no cache handle and no HTTP client — resolution is a dict lookup plus `frozenset` membership tests.
-- **`Permission` catalogue** (37 permissions, `<domain>:<resource>:<action>` grammar with `:self`/`:all` ownership scoping) and a **frozen policy matrix**: `MEMBER` (12) ⊂ `MANAGER` (24) ⊂ `ADMIN` (37). Roles are additive by construction.
+- **`Permission` catalogue** (37 permissions, `<domain>:<action>[:<qualifier>]` grammar with `:all` ownership scoping) and a **frozen policy matrix**: `MEMBER` (12) ⊂ `MANAGER` (23) ⊂ `ADMIN` (37). Roles are additive by construction.
 - Evaluated against the **cryptographically signed claims** extracted from the JWT, **eliminating all per-endpoint database lookups for permissions**.
 - **Tenant boundary checks strictly retained** and evaluated *before* permission membership — a broader role never authorizes a cross-tenant read.
 - **Fail-closed by construction**: missing role, unknown role, missing tenant claim and unknown resource tenant are all denials.
@@ -298,6 +300,37 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 
 ---
 
+### ✅ Task O-02: RBAC Permission Matrix Publication & Team Lead Derived Scope — **GATE 2 SUBMITTED**
+**Milestone**: Gate 2 Submission — single authoritative permission matrix published, team-lead authority derived as a scope, and documentation locked to code by a build gate.
+
+#### Phase 1 — Authoritative Matrix Publication (`docs/rbac-matrix.md` — NEW)
+- Published the **single authoritative, audit-ready permission matrix** governing all system operations, covering all **37 canonical permissions** with per-permission functional definitions, plus the capability domains (`tenant`, `departments`, `teams`, `clients`, `projects`, `people`, `onboarding`, `assignments`, `access`, `integrations`, `audit`, `users`).
+- Standardised **tenant-wide security rules**: mandatory tenant isolation (evaluated before role breadth, never delegated to role width), instant revocation via the single per-request hybrid guard, fail-closed behaviour table, claim integrity, and an explicit segregation-of-duties table (Administrator-only bulk import, revocation, blueprint authoring and team-lead assignment; direct-report constraint on Manager approvals).
+- Matrix counts published and asserted: `MEMBER` (12) ⊂ `MANAGER` (23) ⊂ `ADMIN` (37), strictly nested.
+
+#### Phase 2 — Team Lead as a Derived Scope (`backend/app/core/scopes.py` — NEW)
+- **Team Lead authority is a derived scope, not a fourth global role.** It is absent from `UserRole` (`ADMIN`, `MANAGER`, `MEMBER` only), is never written to `users.role`, cannot be self-assigned, and required **zero schema migrations** — `teams.team_lead_id` already existed.
+- `ScopeResolver` derives the `team_lead` scope and its `lead_teams` bindings from `Team.team_lead_id` at token issuance (`POST /auth/login`, `POST /auth/refresh`); the `ScopeResolver`/`ScopeGrant` result is frozen, typed, and serialised into the signed JWT as `scopes` and `lead_teams` claims.
+- Resolution stays **stateless and in-memory** at authorization time — the claims are authoritative, so a request costs no extra database round-trip.
+
+#### Phase 3 — Engine & Enforcement Synchronisation (`app/core/policy.py`, `dependencies.py`, `services/`)
+- **Every documented permission is mapped directly into the `PolicyEngine` configuration tables** (`POLICY_MATRIX`, `SCOPE_MATRIX`, `RESOURCE_BOUND_SCOPES`) — no endpoint defines its own permission strings.
+- Permission identifiers standardised to **operational formats** across the engine, dependencies, services and suites (`people:read`, `assignments:allocate`, `access:approve`, `audit:export`). A read-side alias table (`LEGACY_PERMISSION_ALIASES`, 33 entries) preserves in-flight O-01 tokens through a rolling deploy; newly issued tokens carry only canonical strings.
+- Added `enforce_scope_boundary`, the only path to scope-granted authority. It requires the team identifier the endpoint **loaded from the database** — a client-supplied `team_id` query parameter was explicitly evaluated and rejected during design, so no request-controlled value participates in an authorization decision.
+- Evaluation order fixed and tested as **tenant boundary → role breadth → scope breadth**, making Team Lead authority strictly narrower than the Manager authority it overlaps, and failing closed when a scope-restricted evaluation receives no resource team.
+- `GET /api/v1/auth/policy` now separates `permissions` (role) from `effective_permissions` (role ∪ scope) and publishes `scopes`, `lead_teams`, `is_team_lead`, `scope_boundaries_enforced` and `authority_reference`; `TokenResponse` mirrors the scope claims.
+
+#### Phase 4 — Documentation Locked To Code As A Build Gate (`test_dwop018_rbac_matrix.py` — NEW)
+- Suite 14 added: **57/57 assertions green**. It parses every capability table in `docs/rbac-matrix.md`, compares each granted column against the engine tables, asserts the reverse direction (no unpublished permission, no unresolvable permission), and fails the build on any divergence — so the document cannot drift from the code silently.
+- Also verified: strict nesting and counts, no `*` sentinel grant, Team Lead inexpressible as a stored role, identifier-format conformance, legacy alias resolution, scope derivation from `Team.team_lead_id`, own-team allow / foreign-team deny / cross-tenant deny / no-team fail-closed, claim tamper rejection, and refresh-time propagation of scope loss.
+
+#### Phase 5 — Regression, Governance & Packaging
+- **All 14 verification suites green** (`test_default_github_integration_seed`, Suites 1–14; **198 measured assertions** across the suites that report `[PASS]` counters), plus `alembic upgrade head → downgrade -1 → upgrade head` verified against a clean database.
+- Fixed a latent test-isolation defect in `test_dwop013_audit_timeline.py`: the integration lookup was unscoped (`db.query(Integration).first()`), so it resolved an integration belonging to whichever tenant happened to be seeded first and failed whenever the database held more than one tenant. It is now tenant-scoped.
+- ADR-002 amended (§6.1) and this report updated to **v1.4**; deliverables packaged for formal **Khalifa security review** and Gate 2 clearance.
+
+---
+
 
 ## 4. API Endpoint Matrix & Frontend Consumption Status
 
@@ -305,7 +338,7 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 |---|---|---|---|---|
 | `POST` | `/api/v1/auth/login` | Public | DWOP-004 | ✅ Consumed in `frontend/src/app/login/page.tsx` & `AuthContext` |
 | `GET` | `/api/v1/auth/me` | Authenticated (`get_current_active_user`) | DWOP-004 | ✅ Consumed in `frontend/src/contexts/AuthContext.tsx` |
-| `GET` | `/api/v1/auth/policy` | Authenticated (in-memory policy resolution) | O-01 | ✅ Ready (drives client-side RBAC navigation) |
+| `GET` | `/api/v1/auth/policy` | Authenticated (in-memory policy + derived-scope resolution) | O-01, O-02 | ✅ Ready (drives client-side RBAC navigation; publishes role vs. effective authority, scopes and lead-team bindings) |
 | `GET` | `/api/v1/departments` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
 | `POST` | `/api/v1/departments` | `require_admin` | DWOP-003 | ⏳ Queued for Org Management UI |
 | `GET` | `/api/v1/departments/{id}` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |

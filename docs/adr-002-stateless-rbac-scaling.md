@@ -1,9 +1,13 @@
 # ADR-002: Stateless RBAC Policy Engine for Horizontal Scaling
 
-**Status**: Proposed
+**Status**: Accepted (Gate 2, pending Khalifa security sign-off)
 **Date**: 2026-10-05
-**Authors**: AZM Nexus Core Backend Engineering (Task O-01)
+**Authors**: AZM Nexus Core Backend Engineering (Tasks O-01, O-02)
 **Deciders**: AZM Nexus Engineering Leadership
+**Published matrix**: [`docs/rbac-matrix.md`](rbac-matrix.md) — the single authoritative,
+audit-ready permission matrix. Every permission string used by this ADR is defined
+there, and `backend/scripts/test_dwop018_rbac_matrix.py` fails the build on any
+divergence between the document and the code.
 **Supersedes/Refines**: ADR-001 Trigger 3 (Horizontal API replicas) and ADR-001
 `Caching: None — Every request hits DB`
 
@@ -246,12 +250,51 @@ from the request path.
 
 | Concern | Location |
 |---|---|
-| Permission catalogue + frozen policy matrix + `PolicyEngine` | `backend/app/core/policy.py` |
-| Signed `role` / `tenant_id` / `perms` claim issuance and verification | `backend/app/core/security.py` |
-| Token verification, hybrid offboarding guard, RBAC dependency factories | `backend/app/core/dependencies.py` |
+| **Published permission matrix (authoritative)** | **`docs/rbac-matrix.md`** |
+| Derived-scope resolver (`Team.team_lead_id` → signed claims) | `backend/app/core/scopes.py` (`ScopeResolver`, `ScopeGrant`) |
+| Permission catalogue + frozen policy matrix + `POLICY_MATRIX` / `SCOPE_MATRIX` + `PolicyEngine` | `backend/app/core/policy.py` |
+| Legacy read-side alias table for rolling deploys | `backend/app/core/policy.py` (`LEGACY_PERMISSION_ALIASES`, 33 entries) |
+| Signed `role` / `tenant_id` / `perms` / `scopes` / `lead_teams` claim issuance and verification | `backend/app/core/security.py` |
+| Token verification, hybrid offboarding guard, RBAC dependency factories, `enforce_scope_boundary` | `backend/app/core/dependencies.py` |
 | Single-query guard (`users` ⋈ `tenants`, both `is_active` flags) | `backend/app/repositories/user.py` (`get_lifecycle_flags`) |
 | Workspace lifecycle flag | `backend/app/models/tenant.py` (`Tenant.is_active`) |
 | Schema migration | `backend/alembic/versions/0003_tenant_lifecycle_guard.py` |
-| Effective-policy introspection endpoint | `backend/app/api/auth.py` (`GET /auth/policy`) |
+| Effective-policy introspection endpoint (role vs. effective, scopes) | `backend/app/api/auth.py` (`GET /auth/policy`) |
 | Service/resource rules routed through the engine | `backend/app/services/access.py`, `backend/app/services/onboarding.py`, `backend/app/core/state_machines.py` |
-| Verification suite (41 assertions) | `backend/scripts/test_dwop017_stateless_rbac.py` |
+| Verification suite — engine & offboarding guard (41 assertions) | `backend/scripts/test_dwop017_stateless_rbac.py` |
+| Verification suite — matrix sync & Team Lead scope (57 assertions) | `backend/scripts/test_dwop018_rbac_matrix.py` |
+
+### 6.1 Task O-02 Amendment — Operational Permission Formats and Team Lead Authority
+
+**Operational identifier format (O-02).** Permission strings are
+`<domain>:<action>[:<qualifier>]` over the operational platform domains —
+`tenant`, `departments`, `teams`, `clients`, `projects`, `people`, `onboarding`,
+`assignments`, `access`, `integrations`, `audit`, `users`. Examples:
+`people:read`, `assignments:allocate`, `access:approve`, `audit:export`. The O-01
+provisional identifiers are superseded; a read-side alias table
+(`LEGACY_PERMISSION_ALIASES`) keeps in-flight O-01 tokens working during a rolling
+deploy, and newly issued tokens carry only canonical O-02 strings.
+
+**Matrix size.** `MEMBER` (12) ⊂ `MANAGER` (23) ⊂ `ADMIN` (37). The sets are strictly
+nested, which `test_dwop018_rbac_matrix.py` asserts.
+
+**Team Lead as a derived scope (no fourth role).** Team Lead authority is *not* a
+`UserRole` member and is *not* persisted in `users.role`. It is derived at token
+issuance from `Team.team_lead_id` by `ScopeResolver` and emitted as the signed
+`scopes: ["team_lead"]` plus `lead_teams: [...]` claims. Consequence: **zero schema
+migrations** — `teams.team_lead_id` already exists.
+
+The scope grants five resource-bound permissions
+(`people:read:all`, `people:intake`, `onboarding:runs:create`, `assignments:read:all`,
+`assignments:allocate`), each evaluated only when the target resource's team appears in
+the signed `lead_teams` binding. Evaluation order is tenant boundary, then role breadth,
+then scope breadth, so Team Lead authority is always strictly narrower than the Manager
+authority it overlaps. Endpoints pass a team identifier loaded from the database; no
+client-supplied header, query parameter or body field participates in an authorization
+decision. Losing the scope by clearing `team_lead_id` propagates on the holder's next
+token issuance, bounded by the access-token lifetime.
+
+**Documentation as a build gate.** `docs/rbac-matrix.md` is the single source of truth
+for the matrix. Suite 18 parses every capability table in the document, compares each
+granted column against `POLICY_MATRIX` / `SCOPE_MATRIX`, and asserts the reverse
+direction too, so the document and the engine cannot drift apart silently.

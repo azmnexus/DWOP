@@ -180,10 +180,10 @@ class OnboardingService:
         # Permission check resolved in application memory (ADR-002), plus the
         # resource-scoped rule that the linked professional may self-serve.
         can_update_any = policy_engine.has_permission(
-            current_user, Permission.ONBOARDING_ITEM_UPDATE_ANY
+            current_user, Permission.ONBOARDING_ITEMS_MANAGE
         )
         can_complete_self = policy_engine.has_permission(
-            current_user, Permission.ONBOARDING_ITEM_COMPLETE_SELF
+            current_user, Permission.ONBOARDING_ITEMS_COMPLETE
         )
         is_assigned_prof = (
             run.professional.user_id is not None

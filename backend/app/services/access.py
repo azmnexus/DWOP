@@ -118,7 +118,7 @@ class AccessService:
         # ADR-002: resource-scoping resolved from the in-memory policy matrix,
         # not from a per-endpoint permission query.
         if not policy_engine.has_permission(
-            current_user, Permission.ACCESS_REQUEST_READ_ALL
+            current_user, Permission.ACCESS_READ_ALL
         ):
             professional = self.professional_repo.get_by_user_id(
                 current_user.tenant_id, current_user.id
@@ -135,7 +135,7 @@ class AccessService:
     ) -> AccessRequest:
         request = self._request(current_user.tenant_id, request_id)
         if not policy_engine.has_permission(
-            current_user, Permission.ACCESS_REQUEST_READ_ALL
+            current_user, Permission.ACCESS_READ_ALL
         ):
             professional = self.professional_repo.get_by_user_id(
                 current_user.tenant_id, current_user.id
@@ -162,10 +162,10 @@ class AccessService:
         # ADR-002: creation scope is an in-memory permission decision; the
         # ownership comparison itself is a resource rule (fail closed).
         if not policy_engine.has_permission(
-            requested_by, Permission.ACCESS_REQUEST_CREATE_ANY
+            requested_by, Permission.ACCESS_REQUEST_ANY
         ) and (
             not policy_engine.has_permission(
-                requested_by, Permission.ACCESS_REQUEST_CREATE_SELF
+                requested_by, Permission.ACCESS_REQUEST
             )
             or professional.user_id != requested_by.id
         ):

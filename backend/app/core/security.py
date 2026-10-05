@@ -1,13 +1,16 @@
 """Password hashing and JWT issuance for DWOP (ADR-002: Stateless RBAC).
 
 The access token is the authorization substrate. It is cryptographically signed
-with ``SECRET_KEY`` and embeds the three claims the in-memory
+with ``SECRET_KEY`` and embeds the claims the in-memory
 :class:`~app.core.policy.PolicyEngine` needs to resolve permissions without a
 database lookup:
 
 * ``role``       - the user's verified role, resolved server-side at login.
 * ``tenant_id``  - the tenant boundary the token is bound to.
 * ``perms``      - the fully expanded permission set for that role.
+* ``scopes``     - derived scopes (e.g. ``team_lead``) computed from
+  ``Team.team_lead_id``, never from a stored role.
+* ``lead_teams`` - the resources the derived scopes are bound to.
 
 Because the payload is signed, an attacker cannot widen their own authority by
 editing a claim: tampering invalidates the signature and
@@ -26,6 +29,10 @@ from app.core.policy import policy_engine
 
 #: Claim carrying the fully expanded permission list (see Permission catalogue).
 PERMISSIONS_CLAIM = "perms"
+#: Claim carrying the derived, non-role scope names.
+SCOPES_CLAIM = "scopes"
+#: Claim carrying the resources the derived scopes are bound to.
+LEAD_TEAMS_CLAIM = "lead_teams"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -73,8 +80,10 @@ def create_access_token(
     email: Optional[str] = None,
     expires_delta: Optional[timedelta] = None,
     permissions: Optional[Sequence[str]] = None,
+    scopes: Optional[Sequence[str]] = None,
+    lead_teams: Optional[Sequence[Any]] = None,
 ) -> str:
-    """Create a signed JWT access token carrying RBAC + tenant claims.
+    """Create a signed JWT access token carrying RBAC + tenant + scope claims.
 
     The returned token is self-contained: after the single offboarding-guard
     query, every subsequent authorization decision is resolved in memory from
@@ -97,6 +106,8 @@ def create_access_token(
         "role": str(role_value) if role_value else None,
         "email": str(email) if email else None,
         PERMISSIONS_CLAIM: resolve_permissions(role_value, permissions),
+        SCOPES_CLAIM: sorted({str(scope) for scope in (scopes or [])}),
+        LEAD_TEAMS_CLAIM: [str(team_id) for team_id in (lead_teams or [])],
         "iss": settings.TOKEN_ISSUER,
         "aud": settings.TOKEN_AUDIENCE,
         "typ": "access",
