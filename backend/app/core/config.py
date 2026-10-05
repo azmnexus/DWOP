@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "replace-this-with-a-secure-random-secret-key"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    TOKEN_ISSUER: str = "dwop-platform"
+    TOKEN_AUDIENCE: str = "dwop-api"
+    # ADR-002: token lifetime used by the stateless RBAC model. Reducing this to
+    # 15 minutes narrows the revocation exposure window served by the hybrid
+    # offboarding guard.
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432

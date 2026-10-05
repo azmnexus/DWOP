@@ -1,11 +1,15 @@
 import uuid
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.dependencies import get_current_active_user
+from app.core.dependencies import (
+    get_current_active_user,
+    get_current_policy_subject,
+)
+from app.core.policy import PolicySubject, policy_engine
 from app.core.security import verify_password, create_access_token
 from app.models.user import User
 from app.repositories.user import UserRepository
@@ -28,6 +32,19 @@ class TokenResponse(BaseModel):
     tenant_id: uuid.UUID
     role: str
     email: str
+    # ADR-002: fully expanded, in-memory-resolved permission set for this role.
+    permissions: List[str] = Field(default_factory=list)
+
+
+class PolicyResponse(BaseModel):
+    """Effective authorization policy resolved in application memory."""
+
+    user_id: uuid.UUID
+    tenant_id: uuid.UUID
+    role: str
+    permissions: List[str]
+    tenant_boundary_enforced: bool = True
+    rbac_mode: str = "stateless-in-memory-policy-matrix"
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -75,12 +92,25 @@ async def login(
             detail="User account is inactive. Please contact your administrator.",
         )
 
-    # Issue JWT with user_id, tenant_id, role, and email
+    # ADR-002: refuse to mint tokens into a suspended workspace. The same flag is
+    # re-verified by the per-request offboarding guard.
+    if not user.tenant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant workspace is suspended. Please contact your administrator.",
+        )
+
+    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    # Expanded once, in memory, from the policy matrix.
+    permissions = policy_engine.permissions_for_token(role_value)
+
+    # Issue JWT embedding the signed role, tenant_id, and permissions claims
     access_token = create_access_token(
         subject=str(user.id),
         tenant_id=str(user.tenant_id),
-        role=user.role.value if hasattr(user.role, "value") else str(user.role),
+        role=role_value,
         email=user.email,
+        permissions=permissions,
     )
 
     # Log immutable audit event for successful authentication
@@ -90,7 +120,7 @@ async def login(
         action="auth.login_successful",
         target_type="User",
         target_id=user.id,
-        metadata={"email": user.email, "role": user.role.value if hasattr(user.role, "value") else str(user.role)},
+        metadata={"email": user.email, "role": role_value, "permission_count": len(permissions)},
         commit=True,
     )
 
@@ -100,8 +130,9 @@ async def login(
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user_id=user.id,
         tenant_id=user.tenant_id,
-        role=user.role.value if hasattr(user.role, "value") else str(user.role),
+        role=role_value,
         email=user.email,
+        permissions=permissions,
     )
 
 
@@ -109,20 +140,48 @@ async def login(
 def get_current_user_profile(
     current_user: User = Depends(get_current_active_user),
 ):
-    """Retrieve profile and role of the currently authenticated user from JWT."""
+    """Retrieve profile and role of the currently authenticated user."""
     return current_user
+
+
+@router.get("/policy", response_model=PolicyResponse)
+def get_effective_policy(
+    current_user: User = Depends(get_current_active_user),
+    subject: PolicySubject = Depends(get_current_policy_subject),
+):
+    """Return the caller's effective policy, resolved entirely in application memory.
+
+    No database or cache lookup is involved in computing ``permissions``: they are
+    derived from the signature-verified ``role`` claim via the in-memory policy
+    matrix. Clients use this to drive RBAC-aware navigation without duplicating
+    authorization logic.
+    """
+    return PolicyResponse(
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        role=subject.role or "",
+        permissions=list(policy_engine.permissions_for_role(subject.role)),
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_access_token(
     current_user: User = Depends(get_current_active_user),
+    subject: PolicySubject = Depends(get_current_policy_subject),
 ):
-    """Generate a refreshed access token for the authenticated user session."""
+    """Re-issue an access token with freshly expanded role/permission claims."""
+    role_value = subject.role or (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    permissions = policy_engine.permissions_for_token(role_value)
     access_token = create_access_token(
         subject=str(current_user.id),
         tenant_id=str(current_user.tenant_id),
-        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+        role=role_value,
         email=current_user.email,
+        permissions=permissions,
     )
     return TokenResponse(
         access_token=access_token,
@@ -130,8 +189,9 @@ def refresh_access_token(
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
-        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
+        role=role_value,
         email=current_user.email,
+        permissions=permissions,
     )
 
 

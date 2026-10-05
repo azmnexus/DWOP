@@ -3,13 +3,14 @@ from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from app.core.policy import Permission, policy_engine
 from app.core.state_machines import (
     InvalidStateTransitionError,
     OnboardingItemStateMachine,
     OnboardingRunStateMachine,
     TransitionGuardError,
 )
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.models.talent import Professional, ProfessionalStatus
 from app.models.onboarding import (
     OnboardingTemplate,
@@ -176,14 +177,20 @@ class OnboardingService:
                 detail=f"Onboarding run '{run_id}' not found in current tenant.",
             )
 
-        # Permission check: Admin, Manager, or the linked Professional
-        is_admin_or_mgr = current_user.role in (UserRole.ADMIN, UserRole.MANAGER)
+        # Permission check resolved in application memory (ADR-002), plus the
+        # resource-scoped rule that the linked professional may self-serve.
+        can_update_any = policy_engine.has_permission(
+            current_user, Permission.ONBOARDING_ITEM_UPDATE_ANY
+        )
+        can_complete_self = policy_engine.has_permission(
+            current_user, Permission.ONBOARDING_ITEM_COMPLETE_SELF
+        )
         is_assigned_prof = (
             run.professional.user_id is not None
             and run.professional.user_id == current_user.id
         )
 
-        if not (is_admin_or_mgr or is_assigned_prof):
+        if not ((can_update_any or can_complete_self) and (can_update_any or is_assigned_prof)):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to modify this onboarding checklist item.",

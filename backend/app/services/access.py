@@ -20,6 +20,7 @@ from app.models.access import (
     AuditEvent,
     Integration,
 )
+from app.core.policy import Permission, policy_engine
 from app.core.state_machines import (
     AccessRequestStateMachine,
     InvalidStateTransitionError,
@@ -114,7 +115,11 @@ class AccessService:
         )
 
     def list_requests(self, current_user: User) -> Iterable[AccessRequest]:
-        if current_user.role == UserRole.MEMBER:
+        # ADR-002: resource-scoping resolved from the in-memory policy matrix,
+        # not from a per-endpoint permission query.
+        if not policy_engine.has_permission(
+            current_user, Permission.ACCESS_REQUEST_READ_ALL
+        ):
             professional = self.professional_repo.get_by_user_id(
                 current_user.tenant_id, current_user.id
             )
@@ -129,7 +134,9 @@ class AccessService:
         self, current_user: User, request_id: uuid.UUID
     ) -> AccessRequest:
         request = self._request(current_user.tenant_id, request_id)
-        if current_user.role == UserRole.MEMBER:
+        if not policy_engine.has_permission(
+            current_user, Permission.ACCESS_REQUEST_READ_ALL
+        ):
             professional = self.professional_repo.get_by_user_id(
                 current_user.tenant_id, current_user.id
             )
@@ -151,8 +158,20 @@ class AccessService:
         professional = self.professional_repo.get_by_id(tenant_id, professional_id)
         if professional is None:
             raise LookupError("Professional not found in current tenant.")
-        if requested_by.role == UserRole.MEMBER and professional.user_id != requested_by.id:
-            raise AccessLifecycleError("Members can request access only for their own professional profile.")
+
+        # ADR-002: creation scope is an in-memory permission decision; the
+        # ownership comparison itself is a resource rule (fail closed).
+        if not policy_engine.has_permission(
+            requested_by, Permission.ACCESS_REQUEST_CREATE_ANY
+        ) and (
+            not policy_engine.has_permission(
+                requested_by, Permission.ACCESS_REQUEST_CREATE_SELF
+            )
+            or professional.user_id != requested_by.id
+        ):
+            raise AccessLifecycleError(
+                "Members can request access only for their own professional profile."
+            )
 
         integration = self.repo.get_integration(tenant_id, integration_id)
         if integration is None:
@@ -201,7 +220,9 @@ class AccessService:
         request = self._request(tenant_id, request_id)
 
         # Locked RBAC Rule: ADMIN has global approval; MANAGER is restricted to direct reports
-        if approver.role == UserRole.MANAGER:
+        if policy_engine.has_role(approver, UserRole.MANAGER) and not policy_engine.has_role(
+            approver, UserRole.ADMIN
+        ):
             if not self._is_manager_for_professional(tenant_id, approver.id, request.professional_id):
                 raise AccessLifecycleError(
                     "Managers are only authorized to approve access requests for direct reports or assigned team members."
