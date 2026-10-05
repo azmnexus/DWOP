@@ -1,9 +1,9 @@
 # DWOP Platform — Sprint 0 Engineering & Architecture Progress Report
 
-**Document Version**: 1.2 (Sprint 0 / Assignments & Capacity Allocation Engine Milestone)  
+**Document Version**: 1.3 (Sprint 0 / Task O-01 Stateless RBAC Policy Engine — ADR-002)  
 **Organization**: AZM Nexus Limited  
 **System**: Digital Workforce Operations Platform (DWOP)  
-**Status**: Completed through Ticket DWOP-009 (including DWOP-010 through DWOP-013, and DWOP-007/008 frontend)  
+**Status**: Completed through Ticket DWOP-009 (including DWOP-010 through DWOP-013, and DWOP-007/008 frontend), Tasks P-01 through P-06, and **Gate 2 (Task O-01 Stateless RBAC Policy Engine)**  
 
 
 ---
@@ -34,6 +34,7 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 | **Database** | PostgreSQL (with SQLite local fallback) | Relational integrity, JSONB semi-structured storage, ACID transactions |
 | **ORM / Migrations** | SQLAlchemy 2.0 + Alembic | Strict type annotations, declarative mappings, versioned migrations |
 | **Security & Auth** | `python-jose` (JWT) + `bcrypt` | Stateless bearer token authentication, secure password hashing |
+| **Authorization (RBAC)** | In-Memory Policy Matrix (`app/core/policy.py`) | Stateless, sub-millisecond permission resolution from signed JWT claims, zero infrastructure dependencies ([ADR-002](file:///c:/Users/k3238/Documents/GitHub/DWOP/docs/adr-002-stateless-rbac-scaling.md)) |
 | **Multi-Tenancy** | Python `contextvars.ContextVar` | Request-isolated tenant scoping via `TenantContextMiddleware` |
 | **Frontend UI** | Next.js 14 + React + TypeScript | App Router, Lucide icons, responsive enterprise administration portal |
 
@@ -253,6 +254,48 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 - **Automated Verification (`backend/scripts/test_dwop016_state_machine.py`)**:
   - Suite 12 added, verifying generic FSM rules, all 5 domain state machines, condition guards, and domain service HTTP 400 integration contracts.
 
+### ✅ Task O-01: Stateless RBAC Policy Engine (ADR-002) — **GATE 2 EXECUTED**
+**Milestone**: Gate 2 Execution — Policy architecture packaged and token claim structures shipped.
+
+#### Phase 1 — Security & Token Payload Refactoring (`backend/app/core/security.py`)
+- Access JWT now cryptographically embeds the user's **verified `role`** claim (resolved server-side at login, never from client input).
+- Access JWT now embeds the **`tenant_id`** claim, which is load-bearing: a mismatch between the claim and the authoritative user row is rejected with `401`, so the claim can no longer be decorative.
+- Access JWT now embeds the user's specific **`permissions`** claim — a fully expanded, sorted permission list resolved from the in-memory policy matrix.
+- Added `iat`, `jti`, `iss` and `aud` claims; `decode_access_token` now verifies issuer and audience in addition to the signature, so tampered payloads are rejected outright.
+- New `Settings`: `TOKEN_ISSUER`, `TOKEN_AUDIENCE`, `REFRESH_TOKEN_EXPIRE_DAYS` (reserved for the O-05 fully-stateless path).
+
+#### Phase 2 — In-Memory Policy Engine (`backend/app/core/policy.py` — NEW)
+- **`PolicyEngine` class** evaluating authorization strictly in application memory. It accepts no database session, no cache handle and no HTTP client — resolution is a dict lookup plus `frozenset` membership tests.
+- **`Permission` catalogue** (37 permissions, `<domain>:<resource>:<action>` grammar with `:self`/`:all` ownership scoping) and a **frozen policy matrix**: `MEMBER` (12) ⊂ `MANAGER` (24) ⊂ `ADMIN` (37). Roles are additive by construction.
+- Evaluated against the **cryptographically signed claims** extracted from the JWT, **eliminating all per-endpoint database lookups for permissions**.
+- **Tenant boundary checks strictly retained** and evaluated *before* permission membership — a broader role never authorizes a cross-tenant read.
+- **Fail-closed by construction**: missing role, unknown role, missing tenant claim and unknown resource tenant are all denials.
+- Measured policy resolution: **~17 µs per evaluation** over 20,000 consecutive calls (sub-millisecond by a factor of ~50).
+
+#### Phase 3 — Hybrid Offboarding Guard (Dependency / Middleware Pipeline)
+- **Exactly one lightweight database query per authenticated request** (`UserRepository.get_lifecycle_flags`, `users` ⋈ `tenants`, narrow `load_only` projection that never fetches `hashed_password`).
+- Simultaneously verifies **`User.is_active`** (instant revocation for offboarded professionals) **and `Tenant.is_active`** (parent workspace validity).
+- **New `Tenant.is_active` column** + migration `backend/alembic/versions/0003_tenant_lifecycle_guard.py`, plus composite index `ix_users_tenant_id_is_active`.
+- While the database handles revocation, **all RBAC permission computing stays in the in-memory engine** — zero permission queries remain.
+- RBAC dependencies now expose factories (`require_permissions`, `require_any_permission`, `require_roles`, `enforce_tenant_boundary`) plus pre-composed guards, with `require_admin` / `require_admin_or_manager` retained as backwards-compatible aliases.
+
+#### Phase 4 — Architectural Decision Record (`docs/adr-002-stateless-rbac-scaling.md`)
+- ADR-002 authored documenting the shift to stateless RBAC, refining ADR-001 Trigger 3 and its "Caching: None" baseline.
+- **Selected architecture defined**: an **In-Memory Policy Matrix embedded in application memory that evaluates signed JWT claims, delivering sub-millisecond policy resolution with zero infrastructure dependencies.**
+- **Future scaling path** to fully-stateless **fifteen-minute tokens using refresh-token rotation**, sequenced across O-01 → O-05.
+- **Alternatives Considered** section formally rejecting:
+  - **Distributed Redis caching** — unwarranted infrastructure overhead, external network latency hops (20–50× slower than the in-memory lookup it replaces), and cache-invalidation race conditions during membership changes where a `DEL` racing a `SET` can resurrect a revoked grant across replicas.
+  - **Open Policy Agent (OPA) / external engines** — heavy daemon deployment complexity, sidecar overhead, and operational maintenance burdens (second language, second release train, second datastore for decision logs) for a 3-role matrix.
+  - Also recorded: DB-backed permission tables, JWT denylists, Casbin/`permify` libraries, and pure statelessness without revocation.
+
+#### Phase 5 — Governance & Sign-Off
+- Policy architecture code and the new token claim structures are packaged and integrated.
+- New endpoint `GET /api/v1/auth/policy` exposes the caller's effective in-memory-resolved policy for client-side RBAC navigation.
+- `POST /api/v1/auth/login` and `/auth/refresh` now return the resolved `permissions` list; login also refuses to mint tokens into a suspended tenant.
+- Service-layer and state-machine role checks (`AccessService`, `OnboardingService`, `TicketStateMachine` supervisory guard) routed through `PolicyEngine`, eliminating duplicated string-literal role comparisons.
+- **Automated Verification (`backend/scripts/test_dwop017_stateless_rbac.py`)** — Suite 13 added: **41/41 assertions green**, covering matrix resolution, fail-closed evaluation, tenant boundary retention, signed/tampered claim handling, single-query enforcement (asserted at the SQL level), offboarded-professional revocation and tenant-suspension revocation.
+- All 12 pre-existing regression suites remain **100% green**.
+
 ---
 
 
@@ -262,6 +305,7 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 |---|---|---|---|---|
 | `POST` | `/api/v1/auth/login` | Public | DWOP-004 | ✅ Consumed in `frontend/src/app/login/page.tsx` & `AuthContext` |
 | `GET` | `/api/v1/auth/me` | Authenticated (`get_current_active_user`) | DWOP-004 | ✅ Consumed in `frontend/src/contexts/AuthContext.tsx` |
+| `GET` | `/api/v1/auth/policy` | Authenticated (in-memory policy resolution) | O-01 | ✅ Ready (drives client-side RBAC navigation) |
 | `GET` | `/api/v1/departments` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
 | `POST` | `/api/v1/departments` | `require_admin` | DWOP-003 | ⏳ Queued for Org Management UI |
 | `GET` | `/api/v1/departments/{id}` | Authenticated | DWOP-003 | ⏳ Queued for Org Management UI |
@@ -358,7 +402,7 @@ python scripts/seed_org_structure.py
 # 3. Start development server
 uvicorn app.main:app --reload --port 8000
 
-# 4. Run automated test suites (12 platform regression suites)
+# 4. Run automated test suites (13 platform regression suites)
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
@@ -371,6 +415,7 @@ python scripts/test_default_github_integration_seed.py
 python scripts/test_dwop014_repositories.py
 python scripts/test_dwop015_facade.py
 python scripts/test_dwop016_state_machine.py
+python scripts/test_dwop017_stateless_rbac.py
 ```
 
 * **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)
