@@ -67,19 +67,19 @@ const navItems: NavItem[] = [
     label: "Access",
     href: "/access",
     icon: <Shield size={18} />,
-    enabled: false,
+    enabled: true,
   },
   {
     label: "Activity",
     href: "/activity",
     icon: <Activity size={18} />,
-    enabled: false,
+    enabled: true,
   },
   {
     label: "Settings",
     href: "/settings",
     icon: <Settings size={18} />,
-    enabled: false,
+    enabled: true,
   },
 ];
 

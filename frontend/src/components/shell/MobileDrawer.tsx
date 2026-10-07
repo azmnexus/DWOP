@@ -38,9 +38,9 @@ const navItems: NavItem[] = [
   { label: 'Assignments', href: '/assignments', icon: <FolderKanban size={18} />, enabled: true },
   { label: 'Clients', href: '/clients', icon: <Building2 size={18} />, enabled: true },
   { label: 'Work Management', href: '/work', icon: <ListChecks size={18} />, enabled: true },
-  { label: 'Access', href: '/access', icon: <Shield size={18} />, enabled: false },
-  { label: 'Activity', href: '/activity', icon: <Activity size={18} />, enabled: false },
-  { label: 'Settings', href: '/settings', icon: <Settings size={18} />, enabled: false },
+  { label: 'Access', href: '/access', icon: <Shield size={18} />, enabled: true },
+  { label: 'Activity', href: '/activity', icon: <Activity size={18} />, enabled: true },
+  { label: 'Settings', href: '/settings', icon: <Settings size={18} />, enabled: true },
 ];
 
 export function MobileDrawer({ isOpen, onClose }: MobileDrawerProps) {

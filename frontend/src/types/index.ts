@@ -285,6 +285,57 @@ export interface AuditEventRead {
   target_id: string;
   metadata: Record<string, unknown> | null;
   timestamp: string;
+  created_at?: string;
+}
+
+export interface AuditExportRead {
+  status: string;
+  tenant_id: string;
+  total_events: number;
+  events: AuditEventRead[];
+}
+
+export type AccessType = "repository" | "channel" | "board" | "drive";
+export type AccessRequestStatus =
+  | "requested"
+  | "approved"
+  | "provisioning"
+  | "provisioned"
+  | "failed"
+  | "revoked";
+
+export interface AccessRequestRead {
+  id: string;
+  tenant_id: string;
+  professional_id: string;
+  integration_id: string;
+  access_type: AccessType;
+  role_or_scope: string;
+  status: AccessRequestStatus;
+  requested_by_user_id: string;
+  approved_by_user_id: string | null;
+  requested_at: string;
+  provisioned_at: string | null;
+}
+
+export interface IntegrationRead {
+  id: string;
+  tenant_id: string;
+  provider: string;
+  auth_type: string;
+  connection_status: string;
+  health_status: string | null;
+  scopes: string[];
+  updated_at: string | null;
+}
+
+export interface TenantRead {
+  id: string;
+  name: string;
+  slug: string;
+  domain: string | null;
+  plan_tier: string;
+  branding: Record<string, unknown>;
   created_at: string;
 }
 
