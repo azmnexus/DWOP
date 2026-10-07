@@ -215,9 +215,9 @@ from the request path.
 
 ### Negative / Trade-offs
 
-- **Role changes are not instantaneous.** A token minted before a role change
-  carries the old role until it expires or is refreshed. Mitigated by 15-minute
-  tokens (§4) and by having role changes trigger a forced refresh.
+- **Role changes are not instantaneous (60-minute exposure window).** A token minted before a role or permission downgrade carries the elevated privileges until it naturally expires. As formally directed by the CTO, we **temporarily accept** this maximum 60-minute privilege-downgrade exposure window to preserve fully stateless authorization for the Gate 2 milestone.
+  - **Accountable Owner:** Khalifa (Task O-01 / Architecture)
+  - **Target Remediation:** Post-Gate 2 Token Lifecycle Enhancement (15-minute TTL + Secure Refresh Rotation).
 - **The matrix must be deployed, not configured.** Changing RBAC requires a
   release. Accepted: with three roles this is cheap, and it makes every policy
   change a code-reviewable artifact.
