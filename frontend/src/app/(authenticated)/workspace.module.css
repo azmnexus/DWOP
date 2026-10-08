@@ -45,6 +45,8 @@
 .toggle[aria-checked="true"] { background: var(--color-brand-accent); }
 .toggle[aria-checked="true"]::after { transform: translateX(20px); }
 .notice { padding: 13px 16px; border: 1px solid var(--color-info-border); border-radius: var(--radius-md); background: var(--color-info-light); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.readOnlyField { display: grid; gap: 4px; min-height: var(--input-height); padding: 10px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-secondary); }
+.readOnlyField span { color: var(--color-text-muted); font-size: var(--font-size-xs); }
 @media (max-width: 900px) { .summary { grid-template-columns: repeat(2, 1fr); } .settingsGrid { grid-template-columns: 1fr; } }
 @media (max-width: 680px) { .header { align-items: stretch; flex-direction: column; } .actions > * { flex: 1; } .filters { grid-template-columns: 1fr; } .event { grid-template-columns: 38px minmax(0, 1fr); padding: 14px; } .eventTime { grid-column: 2; } }
 @media (max-width: 420px) { .summary { grid-template-columns: 1fr; } .actions { flex-direction: column; align-items: stretch; } .integration { align-items: flex-start; flex-wrap: wrap; } }

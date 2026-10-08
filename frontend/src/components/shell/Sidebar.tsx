@@ -112,6 +112,10 @@ export function Sidebar() {
         <div className={styles.navSection}>
           <div className={styles.navSectionLabel}>Platform</div>
           {navItems.map((item) => {
+            if (item.href === "/activity" && user?.role !== "ADMIN") {
+              return null;
+            }
+
             const isActive =
               item.href === "/"
                 ? pathname === "/"

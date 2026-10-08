@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Input } from "@/components/ui/Input";
+import { useAuth } from "@/contexts/AuthContext";
 import type { AuditEventRead, AuditExportRead } from "@/types";
 import styles from "../workspace.module.css";
 import ui from "@/components/ui/ui.module.css";
@@ -14,6 +15,8 @@ import ui from "@/components/ui/ui.module.css";
 const humanize = (value: string) => value.replace(/[._-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 export default function ActivityPage() {
+  const { user } = useAuth();
+  const isActivityAdmin = user?.role === "ADMIN";
   const [events, setEvents] = useState<AuditEventRead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,11 +26,12 @@ export default function ActivityPage() {
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
+    if (!isActivityAdmin) return;
     setLoading(true); setError(null);
     try { setEvents(await api.get<AuditEventRead[]>("/audit/logs?limit=100")); }
     catch (err) { setError(err instanceof ApiRequestError ? err.userMessage : "Unable to load activity."); }
     finally { setLoading(false); }
-  }, []);
+  }, [isActivityAdmin]);
   useEffect(() => { load(); }, [load]);
 
   const actions = useMemo(() => Array.from(new Set(events.map((item) => item.action))).sort(), [events]);
@@ -46,6 +50,7 @@ export default function ActivityPage() {
     } finally { setExporting(false); }
   }
 
+  if (!isActivityAdmin) return <ErrorState type="forbidden" title="Administrator privileges required" message="The activity log contains tenant-wide audit data and is available to administrators only." />;
   if (error) return <ErrorState type="error" message={error} onRetry={load} />;
   return <div className={`${styles.page} fade-in`}>
     <div className={styles.header}><div><h2>Activity log</h2><p>A tenant-wide, immutable record of operational and security events.</p></div><div className={styles.actions}><Button variant="secondary" size="sm" onClick={load}><RefreshCw size={16}/>Refresh</Button><Button size="sm" loading={exporting} onClick={exportLog}><Download size={16}/>Export log</Button></div></div>
