@@ -132,8 +132,15 @@ def main():
     from app.models.access import Integration
     db = SessionLocal()
     try:
-        gh_int = db.query(Integration).first()
-        assert gh_int is not None, "Seeded integration not found in database."
+        # Tenant-scoped lookup: the request must target an integration belonging to
+        # the admin's own tenant. An unscoped .first() picks up whichever tenant was
+        # seeded first and fails whenever the database holds more than one tenant.
+        gh_int = (
+            db.query(Integration)
+            .filter(Integration.tenant_id == uuid.UUID(admin_data["tenant_id"]))
+            .first()
+        )
+        assert gh_int is not None, "Seeded integration not found for admin tenant."
         integration_id = str(gh_int.id)
     finally:
         db.close()

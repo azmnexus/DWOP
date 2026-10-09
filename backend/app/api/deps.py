@@ -13,10 +13,16 @@ from app.core.config import Settings, get_settings
 from app.core.database import SessionLocal
 from app.core.dependencies import (
     get_current_active_user,
+    get_current_policy_subject,
     get_current_user,
     require_admin,
     require_admin_or_manager,
+    require_permissions,
+    require_roles,
+    enforce_scope_boundary,
+    enforce_tenant_boundary,
 )
+from app.core.policy import Permission, PolicyEngine, PolicySubject, Scope, policy_engine
 from app.facades.workforce import WorkforceOnboardingFacade
 from app.models.user import User
 from app.repositories.access import AccessRepository
@@ -177,8 +183,17 @@ __all__ = [
     # Auth & Security
     "get_current_user",
     "get_current_active_user",
+    "get_current_policy_subject",
     "require_admin",
     "require_admin_or_manager",
+    "require_permissions",
+    "require_roles",
+    "enforce_scope_boundary",
+    "enforce_tenant_boundary",
+    "PolicySubject",
+    "Permission",
+    "Scope",
+    "policy_engine",
     "User",
     # Repositories
     "get_user_repository",

@@ -10,6 +10,7 @@ from __future__ import annotations
 import enum
 from typing import Any, Callable, Dict, Generic, List, Optional, Set, Tuple, TypeVar
 
+from app.core.policy import policy_engine
 from app.models.access import AccessRequestStatus
 from app.models.assignment import AssignmentStatus
 from app.models.user import UserRole
@@ -407,8 +408,10 @@ class TicketStateMachine(BaseStateMachine[str]):
     def _guard_supervisory_approval(**context: Any) -> None:
         user_role = context.get("user_role")
         actor = context.get("actor")
-        role = user_role or (actor.role if hasattr(actor, "role") else None)
-        if role not in (UserRole.ADMIN, UserRole.MANAGER, "ADMIN", "MANAGER", "admin", "manager"):
+        resolved = user_role or getattr(actor, "role", None)
+        # ADR-002: supervisory authority resolved from the in-memory policy
+        # matrix instead of a hardcoded string-literal role comparison.
+        if not policy_engine.has_role(resolved, UserRole.ADMIN, UserRole.MANAGER):
             raise TransitionGuardError(
                 "Transition from 'review' to 'completed' requires Manager or Administrator credentials."
             )
