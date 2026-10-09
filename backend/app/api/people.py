@@ -1,9 +1,8 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.core.dependencies import (
+from app.api.deps import (
+    get_people_service,
     get_current_active_user,
     require_admin,
     require_admin_or_manager,
@@ -30,10 +29,10 @@ def list_people(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: PeopleService = Depends(get_people_service),
 ):
     """List all professionals scoped to current authenticated tenant."""
-    return PeopleService(db).list_people(
+    return service.list_people(
         tenant_id=current_user.tenant_id,
         status_filter=status_filter,
         availability_filter=availability_filter,
@@ -46,10 +45,10 @@ def list_people(
 def create_person(
     payload: ProfessionalCreate,
     operator: User = Depends(require_admin_or_manager),
-    db: Session = Depends(get_db),
+    service: PeopleService = Depends(get_people_service),
 ):
     """Intake / register a single professional (Requires ADMIN or MANAGER role)."""
-    return PeopleService(db).create_person(
+    return service.create_person(
         tenant_id=operator.tenant_id,
         actor_id=operator.id,
         payload=payload,
@@ -60,10 +59,10 @@ def create_person(
 def bulk_import_people(
     payload: List[ProfessionalCreate],
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: PeopleService = Depends(get_people_service),
 ):
     """Bulk import an array of professionals in a single atomic database transaction (Requires ADMIN role)."""
-    return PeopleService(db).bulk_import_people(
+    return service.bulk_import_people(
         tenant_id=admin_user.tenant_id,
         actor_id=admin_user.id,
         payload=payload,
@@ -74,10 +73,10 @@ def bulk_import_people(
 def get_person_profile(
     person_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: PeopleService = Depends(get_people_service),
 ):
     """Retrieve full professional profile within tenant (Accessible by all authenticated members)."""
-    person = PeopleService(db).get_person_by_id(
+    person = service.get_person_by_id(
         tenant_id=current_user.tenant_id,
         person_id=person_id,
     )
@@ -94,10 +93,10 @@ def update_person_profile(
     person_id: uuid.UUID,
     payload: ProfessionalUpdate,
     operator: User = Depends(require_admin_or_manager),
-    db: Session = Depends(get_db),
+    service: PeopleService = Depends(get_people_service),
 ):
     """Update professional details or status (Requires ADMIN or MANAGER role)."""
-    return PeopleService(db).update_person_profile(
+    return service.update_person_profile(
         tenant_id=operator.tenant_id,
         person_id=person_id,
         payload=payload,

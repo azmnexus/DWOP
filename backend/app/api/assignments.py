@@ -2,17 +2,26 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.core.dependencies import (
+
+from app.api.deps import (
+    get_db,
+    get_assignment_service,
+    get_project_repository,
+    get_professional_repository,
     get_current_active_user,
     require_admin,
     require_admin_or_manager,
 )
 from app.models.user import User
-from app.models.talent import Professional
-from app.models.project import Project, Client, ProjectStatus
+from app.models.project import Project, ProjectStatus, Client
 from app.models.assignment import Assignment, AssignmentStatus
-from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectRead
+from app.repositories.project import ProjectRepository
+from app.repositories.professional import ProfessionalRepository
+from app.schemas.project import (
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectRead,
+)
 from app.schemas.assignment import (
     AssignmentCreate,
     AssignmentUpdate,
@@ -22,10 +31,10 @@ from app.schemas.assignment import (
 )
 from app.services.assignment import AssignmentService
 
-router = APIRouter(prefix="/assignments", tags=["Assignments & Capacity"])
+router = APIRouter(prefix="/assignments", tags=["Assignments & Capacity Engine"])
 
 
-# ---------------- Project CRUD Endpoints ----------------
+# ---------------- Project Management Endpoints ----------------
 @router.get("/projects", response_model=List[ProjectRead])
 def list_projects(
     status: Optional[ProjectStatus] = None,
@@ -33,30 +42,28 @@ def list_projects(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    project_repo: ProjectRepository = Depends(get_project_repository),
 ):
-    """List projects scoped to current tenant (Accessible by all members)."""
-    query = db.query(Project).filter(Project.tenant_id == current_user.tenant_id)
-    if status:
-        query = query.filter(Project.status == status)
-    if client_id:
-        query = query.filter(Project.client_id == client_id)
-    return query.offset(skip).limit(limit).all()
+    """List projects scoped to tenant with optional client and status filters."""
+    return project_repo.list_projects(
+        tenant_id=current_user.tenant_id,
+        client_id=client_id,
+        status=status,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.post("/projects", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
 def create_project(
     payload: ProjectCreate,
     admin_user: User = Depends(require_admin),
+    project_repo: ProjectRepository = Depends(get_project_repository),
     db: Session = Depends(get_db),
 ):
     """Create a new project (Requires ADMIN role)."""
     if payload.client_id:
-        client = (
-            db.query(Client)
-            .filter(Client.id == payload.client_id, Client.tenant_id == admin_user.tenant_id)
-            .first()
-        )
+        client = project_repo.get_client(admin_user.tenant_id, payload.client_id)
         if not client:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -64,11 +71,7 @@ def create_project(
             )
 
     # Check for duplicate project code within the tenant
-    existing = (
-        db.query(Project)
-        .filter(Project.code == payload.code, Project.tenant_id == admin_user.tenant_id)
-        .first()
-    )
+    existing = project_repo.get_by_code(admin_user.tenant_id, payload.code)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -79,7 +82,7 @@ def create_project(
         tenant_id=admin_user.tenant_id,
         client_id=payload.client_id,
         name=payload.name,
-        code=payload.code,
+        code=payload.code.strip().upper(),
         status=payload.status,
         start_date=payload.start_date,
         target_end_date=payload.target_end_date,
@@ -94,14 +97,10 @@ def create_project(
 def get_project(
     project_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    project_repo: ProjectRepository = Depends(get_project_repository),
 ):
     """Retrieve details for a project in current tenant (Accessible by all members)."""
-    project = (
-        db.query(Project)
-        .filter(Project.id == project_id, Project.tenant_id == current_user.tenant_id)
-        .first()
-    )
+    project = project_repo.get_by_id(current_user.tenant_id, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -115,14 +114,11 @@ def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
     admin_user: User = Depends(require_admin),
+    project_repo: ProjectRepository = Depends(get_project_repository),
     db: Session = Depends(get_db),
 ):
     """Update project details (Requires ADMIN role)."""
-    project = (
-        db.query(Project)
-        .filter(Project.id == project_id, Project.tenant_id == admin_user.tenant_id)
-        .first()
-    )
+    project = project_repo.get_by_id(admin_user.tenant_id, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -130,11 +126,7 @@ def update_project(
         )
 
     if payload.client_id:
-        client = (
-            db.query(Client)
-            .filter(Client.id == payload.client_id, Client.tenant_id == admin_user.tenant_id)
-            .first()
-        )
+        client = project_repo.get_client(admin_user.tenant_id, payload.client_id)
         if not client:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -153,14 +145,11 @@ def update_project(
 def delete_project(
     project_id: uuid.UUID,
     admin_user: User = Depends(require_admin),
+    project_repo: ProjectRepository = Depends(get_project_repository),
     db: Session = Depends(get_db),
 ):
     """Delete a project (Requires ADMIN role)."""
-    project = (
-        db.query(Project)
-        .filter(Project.id == project_id, Project.tenant_id == admin_user.tenant_id)
-        .first()
-    )
+    project = project_repo.get_by_id(admin_user.tenant_id, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -175,33 +164,33 @@ def delete_project(
 @router.get("/capacity", response_model=CapacityOverviewRead)
 def get_capacity_overview(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: AssignmentService = Depends(get_assignment_service),
 ):
     """Query aggregate platform capacity allocations and availability (Accessible by all members)."""
-    return AssignmentService(db).get_capacity_overview(current_user.tenant_id)
+    return service.get_capacity_overview(current_user.tenant_id)
 
 
 @router.get("/capacity/professionals/{professional_id}", response_model=ProfessionalCapacityRead)
 def get_professional_capacity(
     professional_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: AssignmentService = Depends(get_assignment_service),
 ):
     """Retrieve detailed capacity allocations and utilization for a specific professional."""
-    return AssignmentService(db).get_professional_capacity(current_user.tenant_id, professional_id)
+    return service.get_professional_capacity(current_user.tenant_id, professional_id)
 
 
 @router.post("/allocate", response_model=AssignmentRead, status_code=status.HTTP_201_CREATED)
 def allocate_capacity(
     payload: AssignmentCreate,
     operator: User = Depends(require_admin_or_manager),
-    db: Session = Depends(get_db),
+    service: AssignmentService = Depends(get_assignment_service),
 ):
     """Allocate a professional to a project.
     Enforces the 100% capacity limit ceiling and logs an immutable audit event.
     Requires ADMIN or MANAGER role.
     """
-    return AssignmentService(db).allocate_capacity(operator.tenant_id, payload, operator)
+    return service.allocate_capacity(operator.tenant_id, payload, operator)
 
 
 @router.get("", response_model=List[AssignmentRead])
@@ -212,10 +201,31 @@ def list_assignments(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: AssignmentService = Depends(get_assignment_service),
 ):
     """List project assignments scoped to current tenant with optional filters."""
-    return AssignmentService(db).list_assignments(
+    return service.list_assignments(
+        tenant_id=current_user.tenant_id,
+        project_id=project_id,
+        professional_id=professional_id,
+        status_filter=status,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/", response_model=List[AssignmentRead], include_in_schema=False)
+def list_assignments_slash(
+    project_id: Optional[uuid.UUID] = None,
+    professional_id: Optional[uuid.UUID] = None,
+    status: Optional[AssignmentStatus] = None,
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_active_user),
+    service: AssignmentService = Depends(get_assignment_service),
+):
+    """Trailing-slash compatibility alias."""
+    return service.list_assignments(
         tenant_id=current_user.tenant_id,
         project_id=project_id,
         professional_id=professional_id,
@@ -228,20 +238,14 @@ def list_assignments(
 @router.get("/my-allocations", response_model=List[AssignmentRead])
 def get_my_allocations(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    prof_repo: ProfessionalRepository = Depends(get_professional_repository),
+    service: AssignmentService = Depends(get_assignment_service),
 ):
     """Retrieve active project allocations for the authenticated professional."""
-    prof = (
-        db.query(Professional)
-        .filter(
-            Professional.user_id == current_user.id,
-            Professional.tenant_id == current_user.tenant_id,
-        )
-        .first()
-    )
+    prof = prof_repo.get_by_user_id(current_user.tenant_id, current_user.id)
     if not prof:
         return []
-    return AssignmentService(db).list_assignments(
+    return service.list_assignments(
         tenant_id=current_user.tenant_id,
         professional_id=prof.id,
     )
@@ -251,23 +255,16 @@ def get_my_allocations(
 def get_assignment(
     assignment_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: AssignmentService = Depends(get_assignment_service),
 ):
-    """Retrieve details for a single assignment in current tenant."""
-    assignment = (
-        db.query(Assignment)
-        .filter(
-            Assignment.id == assignment_id,
-            Assignment.tenant_id == current_user.tenant_id,
-        )
-        .first()
-    )
+    """Retrieve details for a single assignment by ID."""
+    assignment = service.assignment_repo.get_by_id(current_user.tenant_id, assignment_id)
     if not assignment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Assignment '{assignment_id}' not found in current tenant.",
         )
-    return AssignmentService(db)._enrich_assignment(assignment)
+    return service._enrich_assignment(assignment)
 
 
 @router.patch("/{assignment_id}", response_model=AssignmentRead)
@@ -275,13 +272,29 @@ def update_assignment(
     assignment_id: uuid.UUID,
     payload: AssignmentUpdate,
     operator: User = Depends(require_admin_or_manager),
-    db: Session = Depends(get_db),
+    service: AssignmentService = Depends(get_assignment_service),
 ):
     """Update an assignment's capacity percentage, status, or role.
     Enforces maximum 100% capacity rule and logs immutable audit trail.
     Requires ADMIN or MANAGER role.
     """
-    return AssignmentService(db).update_assignment(
+    return service.update_assignment(
+        tenant_id=operator.tenant_id,
+        assignment_id=assignment_id,
+        payload=payload,
+        actor=operator,
+    )
+
+
+@router.put("/{assignment_id}", response_model=AssignmentRead, include_in_schema=False)
+def update_assignment_put(
+    assignment_id: uuid.UUID,
+    payload: AssignmentUpdate,
+    operator: User = Depends(require_admin_or_manager),
+    service: AssignmentService = Depends(get_assignment_service),
+):
+    """PUT compatibility alias for updating an assignment."""
+    return service.update_assignment(
         tenant_id=operator.tenant_id,
         assignment_id=assignment_id,
         payload=payload,

@@ -1,9 +1,11 @@
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.core.dependencies import get_current_active_user, require_admin
+from app.api.deps import (
+    get_organization_service,
+    get_current_active_user,
+    require_admin,
+)
 from app.models.user import User
 from app.schemas.organization import (
     DepartmentCreate,
@@ -20,10 +22,10 @@ def list_departments(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """List all departments scoped to the authenticated user's tenant (Accessible by all members)."""
-    return OrganizationService(db).list_departments(
+    return service.list_departments(
         tenant_id=current_user.tenant_id,
         skip=skip,
         limit=limit,
@@ -34,10 +36,10 @@ def list_departments(
 def create_department(
     payload: DepartmentCreate,
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Create a new department (Requires ADMIN role)."""
-    return OrganizationService(db).create_department(
+    return service.create_department(
         tenant_id=admin_user.tenant_id,
         payload=payload,
     )
@@ -47,10 +49,10 @@ def create_department(
 def get_department(
     department_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Retrieve details for a department within user's tenant (Accessible by all members)."""
-    dept = OrganizationService(db).get_department(
+    dept = service.get_department(
         tenant_id=current_user.tenant_id,
         department_id=department_id,
     )
@@ -67,10 +69,10 @@ def update_department(
     department_id: uuid.UUID,
     payload: DepartmentUpdate,
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Update department details (Requires ADMIN role)."""
-    return OrganizationService(db).update_department(
+    return service.update_department(
         tenant_id=admin_user.tenant_id,
         department_id=department_id,
         payload=payload,
@@ -81,12 +83,11 @@ def update_department(
 def delete_department(
     department_id: uuid.UUID,
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Delete a department (Requires ADMIN role)."""
-    OrganizationService(db).delete_department(
+    service.delete_department(
         tenant_id=admin_user.tenant_id,
         department_id=department_id,
     )
     return None
-

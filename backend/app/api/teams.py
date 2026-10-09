@@ -1,9 +1,11 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.core.dependencies import get_current_active_user, require_admin
+from app.api.deps import (
+    get_organization_service,
+    get_current_active_user,
+    require_admin,
+)
 from app.models.user import User
 from app.schemas.organization import TeamCreate, TeamUpdate, TeamRead
 from app.services.organization import OrganizationService
@@ -17,10 +19,10 @@ def list_teams(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """List teams scoped to the authenticated user's tenant (Accessible by all members)."""
-    return OrganizationService(db).list_teams(
+    return service.list_teams(
         tenant_id=current_user.tenant_id,
         department_id=department_id,
         skip=skip,
@@ -32,10 +34,10 @@ def list_teams(
 def create_team(
     payload: TeamCreate,
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Create a new team (Requires ADMIN role)."""
-    return OrganizationService(db).create_team(
+    return service.create_team(
         tenant_id=admin_user.tenant_id,
         payload=payload,
     )
@@ -45,10 +47,10 @@ def create_team(
 def get_team(
     team_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Retrieve details for a team in current tenant (Accessible by all members)."""
-    team = OrganizationService(db).get_team(
+    team = service.get_team(
         tenant_id=current_user.tenant_id,
         team_id=team_id,
     )
@@ -65,10 +67,10 @@ def update_team(
     team_id: uuid.UUID,
     payload: TeamUpdate,
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Update team details (Requires ADMIN role)."""
-    return OrganizationService(db).update_team(
+    return service.update_team(
         tenant_id=admin_user.tenant_id,
         team_id=team_id,
         payload=payload,
@@ -79,12 +81,11 @@ def update_team(
 def delete_team(
     team_id: uuid.UUID,
     admin_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
+    service: OrganizationService = Depends(get_organization_service),
 ):
     """Delete a team (Requires ADMIN role)."""
-    OrganizationService(db).delete_team(
+    service.delete_team(
         tenant_id=admin_user.tenant_id,
         team_id=team_id,
     )
     return None
-

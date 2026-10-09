@@ -2,10 +2,16 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.core.dependencies import get_current_active_user, require_admin
+
+from app.api.deps import (
+    get_current_active_user,
+    get_db,
+    get_project_repository,
+    require_admin,
+)
 from app.models.user import User
 from app.models.project import Client, ClientStatus
+from app.repositories.project import ProjectRepository
 from app.schemas.project import ClientCreate, ClientUpdate, ClientRead
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
@@ -17,19 +23,22 @@ def list_clients(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    project_repo: ProjectRepository = Depends(get_project_repository),
 ):
     """List clients scoped to the authenticated user's tenant (Accessible by all members)."""
-    query = db.query(Client).filter(Client.tenant_id == current_user.tenant_id)
-    if status:
-        query = query.filter(Client.status == status)
-    return query.offset(skip).limit(limit).all()
+    return project_repo.list_clients(
+        tenant_id=current_user.tenant_id,
+        status=status,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.post("/", response_model=ClientRead, status_code=status.HTTP_201_CREATED)
 def create_client(
     payload: ClientCreate,
     admin_user: User = Depends(require_admin),
+    project_repo: ProjectRepository = Depends(get_project_repository),
     db: Session = Depends(get_db),
 ):
     """Create a new client account (Requires ADMIN role)."""
@@ -39,7 +48,7 @@ def create_client(
         contact_email=payload.contact_email,
         status=payload.status,
     )
-    db.add(client)
+    project_repo.create_client(client)
     db.commit()
     db.refresh(client)
     return client
@@ -49,14 +58,10 @@ def create_client(
 def get_client(
     client_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    project_repo: ProjectRepository = Depends(get_project_repository),
 ):
     """Retrieve details for a client in current tenant (Accessible by all members)."""
-    client = (
-        db.query(Client)
-        .filter(Client.id == client_id, Client.tenant_id == current_user.tenant_id)
-        .first()
-    )
+    client = project_repo.get_client(current_user.tenant_id, client_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -70,14 +75,11 @@ def update_client(
     client_id: uuid.UUID,
     payload: ClientUpdate,
     admin_user: User = Depends(require_admin),
+    project_repo: ProjectRepository = Depends(get_project_repository),
     db: Session = Depends(get_db),
 ):
     """Update client record (Requires ADMIN role)."""
-    client = (
-        db.query(Client)
-        .filter(Client.id == client_id, Client.tenant_id == admin_user.tenant_id)
-        .first()
-    )
+    client = project_repo.get_client(admin_user.tenant_id, client_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -95,19 +97,16 @@ def update_client(
 def delete_client(
     client_id: uuid.UUID,
     admin_user: User = Depends(require_admin),
+    project_repo: ProjectRepository = Depends(get_project_repository),
     db: Session = Depends(get_db),
 ):
     """Delete a client (Requires ADMIN role)."""
-    client = (
-        db.query(Client)
-        .filter(Client.id == client_id, Client.tenant_id == admin_user.tenant_id)
-        .first()
-    )
+    client = project_repo.get_client(admin_user.tenant_id, client_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Client '{client_id}' not found in current tenant.",
         )
-    db.delete(client)
+    project_repo.client_repo.delete(admin_user.tenant_id, client_id)
     db.commit()
     return None

@@ -4,10 +4,17 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.core.dependencies import get_current_active_user, require_admin
+
+from app.api.deps import (
+    get_access_repository,
+    get_audit_service,
+    get_current_active_user,
+    get_db,
+    require_admin,
+)
 from app.models.user import User
 from app.models.access import Integration, IntegrationProvider, IntegrationAuthType
+from app.repositories.access import AccessRepository
 from app.services.audit import AuditService
 
 router = APIRouter(prefix="/integrations", tags=["Integrations Layer"])
@@ -34,14 +41,10 @@ class IntegrationRead(BaseModel):
 @router.get("/providers", response_model=List[IntegrationRead])
 def list_connected_providers(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    access_repo: AccessRepository = Depends(get_access_repository),
 ):
     """List connected third-party integration providers configured for current tenant."""
-    integrations = (
-        db.query(Integration)
-        .filter(Integration.tenant_id == current_user.tenant_id)
-        .all()
-    )
+    integrations = access_repo.integration_repo._scoped_query(current_user.tenant_id).all()
     results = []
     for it in integrations:
         results.append(
@@ -64,6 +67,8 @@ def connect_provider(
     provider_id: str,
     payload: ConnectProviderRequest,
     operator: User = Depends(require_admin),
+    access_repo: AccessRepository = Depends(get_access_repository),
+    audit_service: AuditService = Depends(get_audit_service),
     db: Session = Depends(get_db),
 ):
     """Initiate or update a third-party service provider connection in current tenant (Requires ADMIN role)."""
@@ -76,13 +81,9 @@ def connect_provider(
             detail=f"Unsupported provider '{provider_id}'. Supported: {valid_providers}",
         )
 
-    integration = (
-        db.query(Integration)
-        .filter(
-            Integration.tenant_id == operator.tenant_id,
-            Integration.provider == provider_key,
-        )
-        .first()
+    integration = access_repo.get_integration_by_provider(
+        operator.tenant_id,
+        IntegrationProvider(provider_key),
     )
     if not integration:
         integration = Integration(
@@ -104,7 +105,7 @@ def connect_provider(
 
     db.flush()
 
-    AuditService(db).log_event(
+    audit_service.log_event(
         tenant_id=operator.tenant_id,
         actor_user_id=operator.id,
         action="integration.connected",
@@ -133,7 +134,7 @@ def connect_provider(
 async def handle_provider_webhook(
     provider_id: str,
     request: Request,
-    db: Session = Depends(get_db),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """Webhook receiver endpoint for external provider event payloads."""
     try:
@@ -148,7 +149,7 @@ async def handle_provider_webhook(
     if tenant_header:
         try:
             tenant_uuid = uuid.UUID(tenant_header)
-            AuditService(db).log_event(
+            audit_service.log_event(
                 tenant_id=tenant_uuid,
                 actor_user_id=None,
                 action="integration.webhook_received",

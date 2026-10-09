@@ -253,6 +253,26 @@ Demonstrate an end-to-end synthetic operational lifecycle without manual databas
 - **Automated Verification (`backend/scripts/test_dwop016_state_machine.py`)**:
   - Suite 12 added, verifying generic FSM rules, all 5 domain state machines, condition guards, and domain service HTTP 400 integration contracts.
 
+### 📌 Operations Note: Task P-07 (Scoped Singleton)
+- P-07 verified and merged under Khalifa senior sign-off (PR #10).
+
+### ✅ Task P-08: Dependency Injection Pattern Implementation (DWOP Engineering Execution Plan 3.8)
+- **Centralized Provider Hub (`backend/app/api/deps.py`)**:
+  - `get_db`: Request-scoped generator yielding a fresh SQLAlchemy `Session` with reliable `try: yield db finally: db.close()` lifecycle teardown under both normal and exception execution paths.
+  - `get_settings`: Re-export of cached application settings singleton via `@lru_cache`.
+  - 8 Repository Providers: `get_user_repository`, `get_professional_repository`, `get_organization_repository` (approved extension D-1/D-2), `get_project_repository`, `get_onboarding_repository`, `get_assignment_repository`, `get_access_repository`, and `get_audit_repository`.
+  - 6 Domain Service Providers: `get_people_service`, `get_onboarding_service`, `get_organization_service` (approved extension D-1), `get_assignment_service`, `get_access_service`, and `get_audit_service` (approved extension D-1), with constructor injection of underlying repository providers.
+  - `get_intake_facade`: Dependency provider for `WorkforceOnboardingFacade` injecting database session and domain services.
+  - Core Auth Guards Re-export: Re-exports `get_current_user`, `get_current_active_user`, `require_admin`, and `require_admin_or_manager` from `app.core.dependencies` to establish `app.api.deps` as the single authoritative provider import source.
+- **Universal Router Refactor**:
+  - Refactored all 10 domain routers under `backend/app/api/` (`auth.py`, `people.py`, `onboarding.py`, `assignments.py`, `access.py`, `departments.py`, `teams.py`, `clients.py`, `audit.py`, `integrations.py`) and `tenants.py` to use `Depends(...)` injection.
+  - Completely eliminated all inline `Service(db)` and `Repository(db)` constructions.
+  - Eliminated all direct `db.query(...)` calls in domain route handlers in favor of injected services and repositories.
+- **Automated Verification (`backend/scripts/test_dwop018_dependency_injection.py`)**:
+  - Suite 14 added, verifying: (1) provider resolution for all settings, db, 8 repositories, 6 services, and facade; (2) IoC mock substitution via `app.dependency_overrides` serving canary mock data without database access; (3) session generator `yield`/`finally` teardown on normal and unhandled exception paths; (4) zero-drift integration across all 10 refactored API routers.
+- **Gate-1 Deliverable**:
+  - Authored `docs/patterns.md` documenting all 8 architectural patterns with class diagrams, file registries, invariants, and a Mandate §3 traceability matrix for CTO sign-off.
+
 ---
 
 
@@ -358,7 +378,7 @@ python scripts/seed_org_structure.py
 # 3. Start development server
 uvicorn app.main:app --reload --port 8000
 
-# 4. Run automated test suites (12 platform regression suites)
+# 4. Run automated test suites (14 platform regression suites)
 python scripts/test_dwop004_auth.py
 python scripts/test_dwop005_people.py
 python scripts/test_dwop006_onboarding.py
@@ -371,6 +391,8 @@ python scripts/test_default_github_integration_seed.py
 python scripts/test_dwop014_repositories.py
 python scripts/test_dwop015_facade.py
 python scripts/test_dwop016_state_machine.py
+python scripts/test_dwop017_singleton.py
+python scripts/test_dwop018_dependency_injection.py
 ```
 
 * **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)

@@ -1,10 +1,9 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.core.dependencies import (
+from app.api.deps import (
+    get_access_service,
     get_current_active_user,
     require_admin,
     require_admin_or_manager,
@@ -29,11 +28,11 @@ def _not_found_or_conflict(exc: Exception) -> HTTPException:
 
 @router.get("/requests", response_model=list[AccessRequestRead])
 def list_access_requests(
-    db: Session = Depends(get_db),
+    service: AccessService = Depends(get_access_service),
     current_user: User = Depends(get_current_active_user),
 ):
     """List access requests scoped to the authenticated user's tenant."""
-    return AccessService(db).list_requests(current_user)
+    return service.list_requests(current_user)
 
 
 @router.post(
@@ -43,12 +42,12 @@ def list_access_requests(
 )
 def create_access_request(
     payload: AccessRequestCreate,
-    db: Session = Depends(get_db),
+    service: AccessService = Depends(get_access_service),
     current_user: User = Depends(get_current_active_user),
 ):
     """Submit a tenant-scoped access request in ``requested`` state."""
     try:
-        return AccessService(db).create_request(
+        return service.create_request(
             tenant_id=current_user.tenant_id,
             professional_id=payload.professional_id,
             integration_id=payload.integration_id,
@@ -64,12 +63,12 @@ def create_access_request(
 def approve_access_request(
     request_id: uuid.UUID,
     payload: AccessApprovalRequest | None = None,
-    db: Session = Depends(get_db),
+    service: AccessService = Depends(get_access_service),
     current_user: User = Depends(require_admin_or_manager),
 ):
     """Approve a requested access request; ADMIN/MANAGER only."""
     try:
-        return AccessService(db).approve_request(
+        return service.approve_request(
             tenant_id=current_user.tenant_id,
             request_id=request_id,
             approver=current_user,
@@ -82,12 +81,12 @@ def approve_access_request(
 @router.post("/requests/{request_id}/provision", response_model=AccessProvisionResult)
 async def provision_access_request(
     request_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    service: AccessService = Depends(get_access_service),
     current_user: User = Depends(require_admin_or_manager),
 ):
     """Invoke the provider adapter for an approved access request."""
     try:
-        request, result = await AccessService(db).provision_request(
+        request, result = await service.provision_request(
             tenant_id=current_user.tenant_id,
             request_id=request_id,
             actor=current_user,
@@ -106,12 +105,12 @@ async def provision_access_request(
 @router.post("/requests/{request_id}/revoke", response_model=AccessRequestRead)
 async def revoke_access_request(
     request_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    service: AccessService = Depends(get_access_service),
     current_user: User = Depends(require_admin),
 ):
     """Revoke provider access while preserving an auditable request history."""
     try:
-        return await AccessService(db).revoke_request(
+        return await service.revoke_request(
             tenant_id=current_user.tenant_id,
             request_id=request_id,
             actor=current_user,
@@ -123,11 +122,11 @@ async def revoke_access_request(
 @router.get("/requests/{request_id}/status", response_model=AccessRequestRead)
 def get_provisioning_status(
     request_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    service: AccessService = Depends(get_access_service),
     current_user: User = Depends(get_current_active_user),
 ):
     """Read the persisted current state of one tenant-scoped access request."""
     try:
-        return AccessService(db).get_request_for_user(current_user, request_id)
+        return service.get_request_for_user(current_user, request_id)
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
