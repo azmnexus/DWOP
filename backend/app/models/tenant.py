@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, JSON
+from sqlalchemy import Boolean, Column, String, DateTime, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -19,6 +19,10 @@ class Tenant(Base):
     slug = Column(String(100), unique=True, nullable=False, index=True)
     domain = Column(String(255), nullable=True)
     plan_tier = Column(String(50), default="starter", nullable=False)
+    # ADR-002: workspace-level suspension flag. Checked by the single hybrid
+    # offboarding-guard query on every authenticated request so a suspended
+    # tenant loses access immediately, independent of JWT expiry.
+    is_active = Column(Boolean, default=True, server_default="true", nullable=False)
     branding = Column(
         JSON().with_variant(JSONB, "postgresql"),
         default=dict,

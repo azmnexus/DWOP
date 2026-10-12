@@ -1,16 +1,22 @@
 import uuid
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import Session
 
 from app.api.deps import (
     get_audit_service,
     get_current_active_user,
+    get_current_policy_subject,
+    get_db,
     get_settings,
     get_user_repository,
+    PolicySubject,
     Settings,
+    policy_engine,
 )
-from app.core.security import verify_password, create_access_token
+from app.core.scopes import ScopeGrant, ScopeResolver
+from app.core.security import create_access_token, verify_password
 from app.models.user import User
 from app.repositories.user import UserRepository
 from app.schemas.user import UserRead
@@ -32,11 +38,66 @@ class TokenResponse(BaseModel):
     tenant_id: uuid.UUID
     role: str
     email: str
+    # ADR-002: fully expanded, in-memory-resolved permission set for this role.
+    permissions: List[str] = Field(default_factory=list)
+    # O-02: derived scopes computed from relational data, never from a stored role.
+    scopes: List[str] = Field(default_factory=list)
+    lead_teams: List[str] = Field(default_factory=list)
+
+
+class PolicyResponse(BaseModel):
+    """Effective authorization policy resolved in application memory."""
+
+    user_id: uuid.UUID
+    tenant_id: uuid.UUID
+    role: str
+    permissions: List[str]
+    # Union of role authority and derived-scope authority (introspection only).
+    effective_permissions: List[str] = Field(default_factory=list)
+    scopes: List[str] = Field(default_factory=list)
+    lead_teams: List[str] = Field(default_factory=list)
+    is_team_lead: bool = False
+    tenant_boundary_enforced: bool = True
+    scope_boundaries_enforced: bool = True
+    rbac_mode: str = "stateless-in-memory-policy-matrix"
+    authority_reference: str = "docs/rbac-matrix.md"
+
+
+def _issue_token_response(
+    user: User,
+    role_value: str,
+    permissions: List[str],
+    scope_grant: ScopeGrant,
+    expires_in: int,
+) -> TokenResponse:
+    """Build the token and its response payload from resolved policy state."""
+    access_token = create_access_token(
+        subject=str(user.id),
+        tenant_id=str(user.tenant_id),
+        role=role_value,
+        email=user.email,
+        permissions=permissions,
+        scopes=sorted(scope_grant.scopes),
+        lead_teams=list(scope_grant.lead_team_ids),
+    )
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=expires_in,
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        role=role_value,
+        email=user.email,
+        permissions=permissions,
+        scopes=sorted(scope_grant.scopes),
+        lead_teams=scope_grant.lead_teams,
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
     request: Request,
+    db: Session = Depends(get_db),
     user_repo: UserRepository = Depends(get_user_repository),
     audit_service: AuditService = Depends(get_audit_service),
     settings: Settings = Depends(get_settings),
@@ -81,12 +142,26 @@ async def login(
             detail="User account is inactive. Please contact your administrator.",
         )
 
-    # Issue JWT with user_id, tenant_id, role, and email
-    access_token = create_access_token(
-        subject=str(user.id),
-        tenant_id=str(user.tenant_id),
-        role=user.role.value if hasattr(user.role, "value") else str(user.role),
-        email=user.email,
+    # ADR-002: refuse to mint tokens into a suspended workspace.
+    if user.tenant and not user.tenant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant workspace is suspended. Please contact your administrator.",
+        )
+
+    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    # Expanded once, in memory, from the policy matrix.
+    permissions = list(policy_engine.permissions_for_token(role_value))
+    # Derived scopes resolved from Team.team_lead_id.
+    scope_grant = ScopeResolver(db).derive(user.id, user.tenant_id)
+
+    # Issue JWT embedding the signed role, tenant_id, permissions and scope claims
+    response = _issue_token_response(
+        user=user,
+        role_value=role_value,
+        permissions=permissions,
+        scope_grant=scope_grant,
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
     # Log immutable audit event for successful authentication
@@ -96,19 +171,15 @@ async def login(
         action="auth.login_successful",
         target_type="User",
         target_id=user.id,
-        metadata={"email": user.email, "role": user.role.value if hasattr(user.role, "value") else str(user.role)},
+        metadata={
+            "email": user.email,
+            "role": role_value,
+            "permission_count": len(permissions),
+            "scopes": sorted(scope_grant.scopes),
+        },
         commit=True,
     )
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user_id=user.id,
-        tenant_id=user.tenant_id,
-        role=user.role.value if hasattr(user.role, "value") else str(user.role),
-        email=user.email,
-    )
+    return response
 
 
 @router.get("/me", response_model=UserRead)
@@ -119,26 +190,51 @@ def get_current_user_profile(
     return current_user
 
 
+@router.get("/policy", response_model=PolicyResponse)
+def get_effective_policy(
+    current_user: User = Depends(get_current_active_user),
+    subject: PolicySubject = Depends(get_current_policy_subject),
+):
+    """Return the caller's effective policy, resolved entirely in application memory.
+
+    No database or cache lookup is involved in computing ``permissions``: they are
+    derived from the signature-verified ``role`` claim via the in-memory policy
+    matrix. Derived scopes (for example ``team_lead``) are reported separately
+    because they are resource-bound, not tenant-wide.
+    """
+    return PolicyResponse(
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        role=subject.role or "",
+        permissions=list(policy_engine.permissions_for_role(subject.role)),
+        effective_permissions=sorted(policy_engine.effective_permissions(subject)),
+        scopes=sorted(policy_engine.scopes_for(subject)),
+        lead_teams=sorted(str(team_id) for team_id in subject.lead_team_ids),
+        is_team_lead=subject.is_team_lead,
+    )
+
+
 @router.post("/refresh", response_model=TokenResponse)
 def refresh_access_token(
     current_user: User = Depends(get_current_active_user),
+    subject: PolicySubject = Depends(get_current_policy_subject),
+    db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    """Generate a refreshed access token for the authenticated user session."""
-    access_token = create_access_token(
-        subject=str(current_user.id),
-        tenant_id=str(current_user.tenant_id),
-        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
-        email=current_user.email,
+    """Generate a refreshed access token with freshly expanded claims."""
+    role_value = subject.role or (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
     )
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
+    permissions = list(policy_engine.permissions_for_token(role_value))
+    scope_grant = ScopeResolver(db).derive(current_user.id, current_user.tenant_id)
+    return _issue_token_response(
+        user=current_user,
+        role_value=role_value,
+        permissions=permissions,
+        scope_grant=scope_grant,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user_id=current_user.id,
-        tenant_id=current_user.tenant_id,
-        role=current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role),
-        email=current_user.email,
     )
 
 
