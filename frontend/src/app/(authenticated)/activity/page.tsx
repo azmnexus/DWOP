@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Input } from "@/components/ui/Input";
+import { useToast } from "@/components/ui/Toast";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AuditEventRead, AuditExportRead } from "@/types";
 import styles from "../workspace.module.css";
@@ -16,6 +17,7 @@ const humanize = (value: string) => value.replace(/[._-]+/g, " ").replace(/\b\w/
 
 export default function ActivityPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const isActivityAdmin = user?.role === "ADMIN";
   const [events, setEvents] = useState<AuditEventRead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,11 @@ export default function ActivityPage() {
       const data = await api.get<AuditExportRead>("/audit/export");
       const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
       const link = document.createElement("a"); link.href = url; link.download = `dwop-audit-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
-    } finally { setExporting(false); }
+    } catch (err) {
+      showToast("error", err instanceof ApiRequestError ? err.userMessage : "Unable to export activity log.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (!isActivityAdmin) return <ErrorState type="forbidden" title="Administrator privileges required" message="The activity log contains tenant-wide audit data and is available to administrators only." />;

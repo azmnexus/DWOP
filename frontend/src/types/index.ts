@@ -318,6 +318,14 @@ export interface AccessRequestRead {
   provisioned_at: string | null;
 }
 
+export interface AccessProvisionResult {
+  request: AccessRequestRead;
+  provider: string;
+  provider_status: string;
+  external_reference?: string | null;
+  error?: string | null;
+}
+
 export interface IntegrationRead {
   id: string;
   tenant_id: string;
